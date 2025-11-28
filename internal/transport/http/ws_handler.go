@@ -3,6 +3,8 @@ package http
 import (
 	"context"
 	"encoding/json"
+	"errors"
+	"io"
 	"log"
 	stdhttp "net/http"
 	"time"
@@ -57,14 +59,21 @@ func (h *WSHandler) ServeHTTP(w stdhttp.ResponseWriter, r *stdhttp.Request) {
 
 	status := websocket.StatusNormalClosure
 	reason := "closing"
-	if err != nil && err != context.Canceled {
+	if err != nil && !errors.Is(err, context.Canceled) {
+		if errors.Is(err, io.EOF) {
+			err = nil
+		}
 		if s := websocket.CloseStatus(err); s != 0 {
 			status = s
-		} else {
-			status = websocket.StatusInternalError
 		}
-		reason = err.Error()
-		if status != websocket.StatusNormalClosure {
+		if status == websocket.StatusNormalClosure || status == websocket.StatusGoingAway {
+			err = nil
+		}
+		if err != nil {
+			if status == websocket.StatusNormalClosure {
+				status = websocket.StatusInternalError
+			}
+			reason = err.Error()
 			log.Printf("ws connection closed with error: %v", err)
 		}
 	}

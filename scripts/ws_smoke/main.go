@@ -45,32 +45,48 @@ func main() {
 	msgPayload, _ := json.Marshal(proto.MsgData{Room: *room, Text: *text})
 	mustSend(proto.Inbound{Type: "msg", Data: msgPayload})
 
-	var outbound struct {
-		Type  string          `json:"type"`
-		Event string          `json:"event"`
-		Data  json.RawMessage `json:"data"`
-		Err   string          `json:"error,omitempty"`
-	}
+	for {
+		var outbound proto.Outbound
+		if err := wsjson.Read(ctx, conn, &outbound); err != nil {
+			log.Fatalf("read: %v", err)
+		}
 
-	if err := wsjson.Read(ctx, conn, &outbound); err != nil {
-		log.Fatalf("read: %v", err)
-	}
+		fmt.Printf("Received outbound: type=%s", outbound.Type)
+		if outbound.Event != "" {
+			fmt.Printf(" event=%s", outbound.Event)
+		}
+		fmt.Println()
 
-	fmt.Printf("Received outbound: type=%s", outbound.Type)
-	if outbound.Event != "" {
-		fmt.Printf(" event=%s", outbound.Event)
-	}
-	fmt.Println()
-	if outbound.Err != "" {
-		fmt.Printf("Error: %s\n", outbound.Err)
-	}
+		if outbound.Err != "" {
+			fmt.Printf("Error: %s\n", outbound.Err)
+		}
 
-	if len(outbound.Data) > 0 {
-		var evt proto.EventMessage
-		if err := json.Unmarshal(outbound.Data, &evt); err == nil {
+		raw, err := json.Marshal(outbound.Data)
+		if err != nil {
+			log.Fatalf("marshal outbound data: %v", err)
+		}
+
+		switch outbound.Event {
+		case "message":
+			var evt proto.EventMessage
+			if err := json.Unmarshal(raw, &evt); err != nil {
+				fmt.Printf("Raw data: %s\n", string(raw))
+				return
+			}
 			fmt.Printf("EventMessage: room=%s user=%s text=%q ts=%d\n", evt.Room, evt.User, evt.Text, evt.Ts)
-		} else {
-			fmt.Printf("Raw data: %s\n", string(outbound.Data))
+			return
+		case "user_joined":
+			var evt proto.EventUserJoined
+			if err := json.Unmarshal(raw, &evt); err == nil {
+				fmt.Printf("Join: room=%s user=%s\n", evt.Room, evt.User)
+			}
+		case "user_left":
+			var evt proto.EventUserLeft
+			if err := json.Unmarshal(raw, &evt); err == nil {
+				fmt.Printf("Left: room=%s user=%s\n", evt.Room, evt.User)
+			}
+		default:
+			// keep looping for message
 		}
 	}
 }
