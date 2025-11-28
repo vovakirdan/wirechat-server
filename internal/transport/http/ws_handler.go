@@ -55,7 +55,7 @@ func (h *WSHandler) ServeHTTP(w stdhttp.ResponseWriter, r *stdhttp.Request) {
 
 	err = <-errCh
 	cancel() // stop the other goroutine
-	_ = <-errCh
+	<-errCh
 
 	status := websocket.StatusNormalClosure
 	reason := "closing"

@@ -49,13 +49,25 @@ func (h *Hub) Run(ctx context.Context) {
 }
 
 // RegisterClient schedules a client for registration.
+// Non-blocking: если канал заполнен или hub остановлен, регистрация пропускается.
 func (h *Hub) RegisterClient(client *Client) {
-	h.register <- client
+	select {
+	case h.register <- client:
+	default:
+		// Канал заполнен или hub остановлен - пропускаем регистрацию
+	}
 }
 
 // UnregisterClient schedules a client for removal.
+// Non-blocking: если канал заполнен или hub остановлен, отправка пропускается.
+// Это предотвращает блокировку во время graceful shutdown.
 func (h *Hub) UnregisterClient(client *Client) {
-	h.unregister <- client
+	select {
+	case h.unregister <- client:
+	default:
+		// Канал заполнен или hub остановлен - пропускаем отправку
+		// Во время shutdown hub сам закроет все клиенты через shutdown()
+	}
 }
 
 func (h *Hub) consumeCommands(ctx context.Context, client *Client) {
