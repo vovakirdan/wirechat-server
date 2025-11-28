@@ -3,11 +3,13 @@ package http
 import (
 	"context"
 	"encoding/json"
+	"io"
 	"net/http/httptest"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/rs/zerolog"
 	"github.com/vovakirdan/wirechat-server/internal/config"
 	"github.com/vovakirdan/wirechat-server/internal/core"
 	"github.com/vovakirdan/wirechat-server/internal/proto"
@@ -22,11 +24,13 @@ func startTestServer(t *testing.T) (*httptest.Server, context.CancelFunc) {
 	ctx, cancel := context.WithCancel(context.Background())
 	go hub.Run(ctx)
 
+	disabledLogger := zerolog.New(io.Discard)
+
 	server := NewServer(hub, config.Config{
 		Addr:              ":0",
 		ReadHeaderTimeout: time.Second,
 		ShutdownTimeout:   time.Second,
-	})
+	}, &disabledLogger)
 
 	ts := httptest.NewServer(server.Handler)
 	t.Cleanup(ts.Close)

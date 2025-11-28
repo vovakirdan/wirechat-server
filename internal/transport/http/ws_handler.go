@@ -4,9 +4,9 @@ import (
 	"context"
 	"errors"
 	"io"
-	"log"
 	stdhttp "net/http"
 
+	"github.com/rs/zerolog"
 	"github.com/vovakirdan/wirechat-server/internal/core"
 	"github.com/vovakirdan/wirechat-server/internal/proto"
 	"github.com/vovakirdan/wirechat-server/pkg/utils"
@@ -17,11 +17,12 @@ import (
 // WSHandler upgrades HTTP connections and bridges them to core.Client.
 type WSHandler struct {
 	hub core.Hub
+	log *zerolog.Logger
 }
 
 // NewWSHandler builds a new WebSocket handler.
-func NewWSHandler(hub core.Hub) stdhttp.Handler {
-	return &WSHandler{hub: hub}
+func NewWSHandler(hub core.Hub, logger *zerolog.Logger) stdhttp.Handler {
+	return &WSHandler{hub: hub, log: logger}
 }
 
 func (h *WSHandler) ServeHTTP(w stdhttp.ResponseWriter, r *stdhttp.Request) {
@@ -31,7 +32,7 @@ func (h *WSHandler) ServeHTTP(w stdhttp.ResponseWriter, r *stdhttp.Request) {
 		InsecureSkipVerify: true,
 	})
 	if err != nil {
-		log.Printf("ws accept error: %v", err)
+		h.log.Error().Err(err).Msg("ws accept error")
 		return
 	}
 	defer conn.Close(websocket.StatusInternalError, "internal error")
@@ -72,7 +73,7 @@ func (h *WSHandler) ServeHTTP(w stdhttp.ResponseWriter, r *stdhttp.Request) {
 				status = websocket.StatusInternalError
 			}
 			reason = err.Error()
-			log.Printf("ws connection closed with error: %v", err)
+			h.log.Warn().Err(err).Msg("ws connection closed with error")
 		}
 	}
 
@@ -83,11 +84,13 @@ func (h *WSHandler) readLoop(ctx context.Context, conn *websocket.Conn, client *
 	for {
 		var inbound proto.Inbound
 		if err := wsjson.Read(ctx, conn, &inbound); err != nil {
+			h.log.Warn().Err(err).Str("client_id", client.ID).Msg("read ws inbound")
 			return err
 		}
 
 		cmd, err := inboundToCommand(client, inbound)
 		if err != nil {
+			h.log.Warn().Err(err).Str("client_id", client.ID).Msg("failed to map inbound")
 			return err
 		}
 		if cmd != nil {
@@ -104,6 +107,7 @@ func (h *WSHandler) writeLoop(ctx context.Context, conn *websocket.Conn, client 
 				return nil
 			}
 			if err := wsjson.Write(ctx, conn, outboundFromEvent(event)); err != nil {
+				h.log.Error().Err(err).Str("client_id", client.ID).Msg("write ws event")
 				return err
 			}
 		case <-ctx.Done():
