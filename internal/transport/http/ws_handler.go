@@ -102,7 +102,7 @@ func (h *WSHandler) readLoop(ctx context.Context, conn *websocket.Conn, client *
 			if err := json.Unmarshal(inbound.Data, &join); err != nil {
 				return err
 			}
-			client.Commands <- core.Command{
+			client.Commands <- &core.Command{
 				Kind: core.CommandJoinRoom,
 				Room: join.Room,
 			}
@@ -111,7 +111,7 @@ func (h *WSHandler) readLoop(ctx context.Context, conn *websocket.Conn, client *
 			if err := json.Unmarshal(inbound.Data, &leave); err != nil {
 				return err
 			}
-			client.Commands <- core.Command{
+			client.Commands <- &core.Command{
 				Kind: core.CommandLeaveRoom,
 				Room: leave.Room,
 			}
@@ -120,7 +120,7 @@ func (h *WSHandler) readLoop(ctx context.Context, conn *websocket.Conn, client *
 			if err := json.Unmarshal(inbound.Data, &msg); err != nil {
 				return err
 			}
-			client.Commands <- core.Command{
+			client.Commands <- &core.Command{
 				Kind: core.CommandSendRoomMessage,
 				Room: msg.Room,
 				Message: core.Message{
@@ -153,7 +153,7 @@ func (h *WSHandler) writeLoop(ctx context.Context, conn *websocket.Conn, client 
 	}
 }
 
-func eventToOutbound(event core.Event) proto.Outbound {
+func eventToOutbound(event *core.Event) proto.Outbound {
 	switch event.Kind {
 	case core.EventRoomMessage:
 		return proto.Outbound{
@@ -163,7 +163,7 @@ func eventToOutbound(event core.Event) proto.Outbound {
 				Room: event.Message.Room,
 				User: event.Message.From,
 				Text: event.Message.Text,
-				Ts:   event.Message.CreatedAt.Unix(),
+				TS:   event.Message.CreatedAt.Unix(),
 			},
 		}
 	case core.EventUserJoined:

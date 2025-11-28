@@ -16,7 +16,7 @@ type Hub struct {
 
 type clientCommand struct {
 	client *Client
-	cmd    Command
+	cmd    *Command
 }
 
 // NewHub creates a new chat hub instance.
@@ -88,7 +88,7 @@ func (h *Hub) consumeCommands(ctx context.Context, client *Client) {
 	}
 }
 
-func (h *Hub) handleCommand(client *Client, cmd Command) {
+func (h *Hub) handleCommand(client *Client, cmd *Command) {
 	switch cmd.Kind {
 	case CommandJoinRoom:
 		h.joinRoom(client, cmd.Room)
@@ -110,7 +110,7 @@ func (h *Hub) joinRoom(client *Client, roomName string) {
 		return
 	}
 	client.Rooms[roomName] = struct{}{}
-	h.broadcastToRoom(roomName, Event{
+	h.broadcastToRoom(roomName, &Event{
 		Kind: EventUserJoined,
 		Room: roomName,
 		User: client.Name,
@@ -126,7 +126,7 @@ func (h *Hub) leaveRoom(client *Client, roomName string) {
 		return
 	}
 	delete(client.Rooms, roomName)
-	h.broadcastToRoom(roomName, Event{
+	h.broadcastToRoom(roomName, &Event{
 		Kind: EventUserLeft,
 		Room: roomName,
 		User: client.Name,
@@ -136,7 +136,7 @@ func (h *Hub) leaveRoom(client *Client, roomName string) {
 	}
 }
 
-func (h *Hub) sendRoomMessage(client *Client, cmd Command) {
+func (h *Hub) sendRoomMessage(client *Client, cmd *Command) {
 	if cmd.Room == "" {
 		return
 	}
@@ -153,7 +153,7 @@ func (h *Hub) sendRoomMessage(client *Client, cmd Command) {
 	}
 	msg.Room = cmd.Room
 
-	h.broadcastToRoom(cmd.Room, Event{
+	h.broadcastToRoom(cmd.Room, &Event{
 		Kind:    EventRoomMessage,
 		Room:    cmd.Room,
 		Message: msg,
@@ -187,7 +187,7 @@ func (h *Hub) ensureRoom(name string) *Room {
 	return room
 }
 
-func (h *Hub) broadcastToRoom(roomName string, event Event) {
+func (h *Hub) broadcastToRoom(roomName string, event *Event) {
 	room, ok := h.rooms[roomName]
 	if !ok {
 		return

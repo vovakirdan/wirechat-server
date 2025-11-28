@@ -21,13 +21,15 @@ func main() {
 	flag.Parse()
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
-	defer stop()
 
 	application := app.New(cfg)
 
 	log.Printf("starting wirechat server on %s", cfg.Addr)
 	if err := application.Run(ctx); err != nil {
-		log.Fatalf("server exited with error: %v", err)
+		stop()
+		log.Printf("server exited with error: %v", err)
+		os.Exit(1)
 	}
+	stop()
 	log.Println("server stopped")
 }

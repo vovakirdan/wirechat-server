@@ -4,8 +4,8 @@ package core
 type Client struct {
 	ID       string
 	Name     string
-	Commands chan Command
-	Events   chan Event
+	Commands chan *Command
+	Events   chan *Event
 	Rooms    map[string]struct{}
 }
 
@@ -17,8 +17,8 @@ func NewClient(id, name string) *Client {
 	return &Client{
 		ID:       id,
 		Name:     name,
-		Commands: make(chan Command, 8),
-		Events:   make(chan Event, 8),
+		Commands: make(chan *Command, 8),
+		Events:   make(chan *Event, 8),
 		Rooms:    make(map[string]struct{}),
 	}
 }

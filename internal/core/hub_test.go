@@ -19,10 +19,10 @@ func TestHubRoomBroadcast(t *testing.T) {
 	hub.RegisterClient(alice)
 	hub.RegisterClient(bob)
 
-	alice.Commands <- Command{Kind: CommandJoinRoom, Room: "general"}
-	bob.Commands <- Command{Kind: CommandJoinRoom, Room: "general"}
+	alice.Commands <- &Command{Kind: CommandJoinRoom, Room: "general"}
+	bob.Commands <- &Command{Kind: CommandJoinRoom, Room: "general"}
 
-	alice.Commands <- Command{
+	alice.Commands <- &Command{
 		Kind: CommandSendRoomMessage,
 		Room: "general",
 		Message: Message{

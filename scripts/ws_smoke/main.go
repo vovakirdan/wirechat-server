@@ -6,6 +6,7 @@ import (
 	"flag"
 	"fmt"
 	"log"
+	"os"
 	"time"
 
 	"github.com/vovakirdan/wirechat-server/internal/proto"
@@ -14,6 +15,13 @@ import (
 )
 
 func main() {
+	if err := run(); err != nil {
+		log.Printf("ws_smoke: %v", err)
+		os.Exit(1)
+	}
+}
+
+func run() error {
 	addr := flag.String("addr", "ws://localhost:8080/ws", "WebSocket address")
 	user := flag.String("user", "tester", "username to announce with hello")
 	room := flag.String("room", "general", "room name")
@@ -26,29 +34,45 @@ func main() {
 
 	conn, _, err := websocket.Dial(ctx, *addr, nil)
 	if err != nil {
-		log.Fatalf("dial: %v", err)
+		return fmt.Errorf("dial: %w", err)
 	}
 	defer conn.Close(websocket.StatusNormalClosure, "bye")
 
-	mustSend := func(v interface{}) {
+	mustSend := func(v interface{}) error {
 		if err := wsjson.Write(ctx, conn, v); err != nil {
-			log.Fatalf("send: %v", err)
+			return fmt.Errorf("send: %w", err)
+		}
+		return nil
+	}
+
+	if helloPayload, marshalErr := json.Marshal(proto.HelloData{User: *user}); marshalErr != nil {
+		return fmt.Errorf("marshal hello: %w", marshalErr)
+	} else {
+		if err := mustSend(proto.Inbound{Type: "hello", Data: helloPayload}); err != nil {
+			return err
 		}
 	}
 
-	helloPayload, _ := json.Marshal(proto.HelloData{User: *user})
-	mustSend(proto.Inbound{Type: "hello", Data: helloPayload})
+	if joinPayload, marshalErr := json.Marshal(proto.JoinData{Room: *room}); marshalErr != nil {
+		return fmt.Errorf("marshal join: %w", marshalErr)
+	} else {
+		if err := mustSend(proto.Inbound{Type: "join", Data: joinPayload}); err != nil {
+			return err
+		}
+	}
 
-	joinPayload, _ := json.Marshal(proto.JoinData{Room: *room})
-	mustSend(proto.Inbound{Type: "join", Data: joinPayload})
-
-	msgPayload, _ := json.Marshal(proto.MsgData{Room: *room, Text: *text})
-	mustSend(proto.Inbound{Type: "msg", Data: msgPayload})
+	if msgPayload, marshalErr := json.Marshal(proto.MsgData{Room: *room, Text: *text}); marshalErr != nil {
+		return fmt.Errorf("marshal msg: %w", marshalErr)
+	} else {
+		if err := mustSend(proto.Inbound{Type: "msg", Data: msgPayload}); err != nil {
+			return err
+		}
+	}
 
 	for {
 		var outbound proto.Outbound
 		if err := wsjson.Read(ctx, conn, &outbound); err != nil {
-			log.Fatalf("read: %v", err)
+			return fmt.Errorf("read: %w", err)
 		}
 
 		fmt.Printf("Received outbound: type=%s", outbound.Type)
@@ -63,18 +87,18 @@ func main() {
 
 		raw, err := json.Marshal(outbound.Data)
 		if err != nil {
-			log.Fatalf("marshal outbound data: %v", err)
+			return fmt.Errorf("marshal outbound data: %w", err)
 		}
 
 		switch outbound.Event {
 		case "message":
 			var evt proto.EventMessage
-			if err := json.Unmarshal(raw, &evt); err != nil {
+			if unmarshalErr := json.Unmarshal(raw, &evt); unmarshalErr != nil {
 				fmt.Printf("Raw data: %s\n", string(raw))
-				return
+				return fmt.Errorf("unmarshal message: %w", unmarshalErr)
 			}
-			fmt.Printf("EventMessage: room=%s user=%s text=%q ts=%d\n", evt.Room, evt.User, evt.Text, evt.Ts)
-			return
+			fmt.Printf("EventMessage: room=%s user=%s text=%q ts=%d\n", evt.Room, evt.User, evt.Text, evt.TS)
+			return nil
 		case "user_joined":
 			var evt proto.EventUserJoined
 			if err := json.Unmarshal(raw, &evt); err == nil {

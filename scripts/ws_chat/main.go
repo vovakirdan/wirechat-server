@@ -19,6 +19,13 @@ import (
 )
 
 func main() {
+	if err := run(); err != nil {
+		log.Printf("ws_chat: %v", err)
+		os.Exit(1)
+	}
+}
+
+func run() error {
 	addr := flag.String("addr", "ws://localhost:8080/ws", "WebSocket address")
 	user := flag.String("user", "cli-user", "username")
 	room := flag.String("room", "general", "room to join")
@@ -31,20 +38,27 @@ func main() {
 
 	conn, _, err := websocket.Dial(ctx, *addr, nil)
 	if err != nil {
-		log.Fatalf("dial: %v", err)
+		return fmt.Errorf("dial: %w", err)
 	}
 	defer conn.Close(websocket.StatusNormalClosure, "bye")
 
 	send := func(v interface{}) {
-		if err := wsjson.Write(ctx, conn, v); err != nil {
-			log.Fatalf("send: %v", err)
+		if writeErr := wsjson.Write(ctx, conn, v); writeErr != nil {
+			cancel()
+			log.Printf("send: %v", writeErr)
 		}
 	}
 
-	helloPayload, _ := json.Marshal(proto.HelloData{User: *user})
+	helloPayload, err := json.Marshal(proto.HelloData{User: *user})
+	if err != nil {
+		return fmt.Errorf("marshal hello: %w", err)
+	}
 	send(proto.Inbound{Type: "hello", Data: helloPayload})
 
-	joinPayload, _ := json.Marshal(proto.JoinData{Room: *room})
+	joinPayload, err := json.Marshal(proto.JoinData{Room: *room})
+	if err != nil {
+		return fmt.Errorf("marshal join: %w", err)
+	}
 	send(proto.Inbound{Type: "join", Data: joinPayload})
 
 	fmt.Printf("Connected to %s as %s in room %s\n", *addr, *user, *room)
@@ -60,6 +74,7 @@ func main() {
 	stop()
 	cancel()
 	_ = conn.Close(websocket.StatusNormalClosure, "bye")
+	return nil
 }
 
 func readLoop(ctx context.Context, conn *websocket.Conn) {
@@ -80,19 +95,40 @@ func readLoop(ctx context.Context, conn *websocket.Conn) {
 
 		switch outbound.Event {
 		case "message":
-			raw, _ := json.Marshal(outbound.Data)
+			raw, err := json.Marshal(outbound.Data)
+			if err != nil {
+				log.Printf("marshal outbound data: %v", err)
+				continue
+			}
 			var evt proto.EventMessage
-			_ = json.Unmarshal(raw, &evt)
+			if err := json.Unmarshal(raw, &evt); err != nil {
+				log.Printf("unmarshal message: %v", err)
+				continue
+			}
 			fmt.Printf("[%s] %s: %s\n", evt.Room, evt.User, evt.Text)
 		case "user_joined":
-			raw, _ := json.Marshal(outbound.Data)
+			raw, err := json.Marshal(outbound.Data)
+			if err != nil {
+				log.Printf("marshal outbound data: %v", err)
+				continue
+			}
 			var evt proto.EventUserJoined
-			_ = json.Unmarshal(raw, &evt)
+			if err := json.Unmarshal(raw, &evt); err != nil {
+				log.Printf("unmarshal user_joined: %v", err)
+				continue
+			}
 			fmt.Printf("[room %s] %s joined\n", evt.Room, evt.User)
 		case "user_left":
-			raw, _ := json.Marshal(outbound.Data)
+			raw, err := json.Marshal(outbound.Data)
+			if err != nil {
+				log.Printf("marshal outbound data: %v", err)
+				continue
+			}
 			var evt proto.EventUserLeft
-			_ = json.Unmarshal(raw, &evt)
+			if err := json.Unmarshal(raw, &evt); err != nil {
+				log.Printf("unmarshal user_left: %v", err)
+				continue
+			}
 			fmt.Printf("[room %s] %s left\n", evt.Room, evt.User)
 		default:
 			fmt.Printf("event=%s data=%v\n", outbound.Event, outbound.Data)
@@ -123,7 +159,11 @@ func writeLoop(ctx context.Context, conn *websocket.Conn, room string) {
 				continue
 			}
 
-			payload, _ := json.Marshal(proto.MsgData{Room: room, Text: text})
+			payload, err := json.Marshal(proto.MsgData{Room: room, Text: text})
+			if err != nil {
+				log.Printf("marshal msg: %v", err)
+				return
+			}
 			if err := wsjson.Write(ctx, conn, proto.Inbound{Type: "msg", Data: payload}); err != nil {
 				log.Printf("send error: %v", err)
 				return

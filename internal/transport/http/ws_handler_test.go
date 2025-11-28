@@ -71,23 +71,32 @@ func TestWebSocketHelloAndMessage(t *testing.T) {
 	defer connB.Close(websocket.StatusNormalClosure, "done")
 
 	sendHello := func(conn *websocket.Conn, user string) {
-		payload, _ := json.Marshal(proto.HelloData{User: user})
-		if err := wsjson.Write(ctx, conn, proto.Inbound{Type: "hello", Data: payload}); err != nil {
-			t.Fatalf("send hello: %v", err)
+		payload, marshalErr := json.Marshal(proto.HelloData{User: user})
+		if marshalErr != nil {
+			t.Fatalf("marshal hello: %v", marshalErr)
+		}
+		if writeErr := wsjson.Write(ctx, conn, proto.Inbound{Type: "hello", Data: payload}); writeErr != nil {
+			t.Fatalf("send hello: %v", writeErr)
 		}
 	}
 
 	sendJoin := func(conn *websocket.Conn, room string) {
-		payload, _ := json.Marshal(proto.JoinData{Room: room})
-		if err := wsjson.Write(ctx, conn, proto.Inbound{Type: "join", Data: payload}); err != nil {
-			t.Fatalf("send join: %v", err)
+		payload, marshalErr := json.Marshal(proto.JoinData{Room: room})
+		if marshalErr != nil {
+			t.Fatalf("marshal join: %v", marshalErr)
+		}
+		if writeErr := wsjson.Write(ctx, conn, proto.Inbound{Type: "join", Data: payload}); writeErr != nil {
+			t.Fatalf("send join: %v", writeErr)
 		}
 	}
 
 	sendMsg := func(conn *websocket.Conn, room, text string) {
-		payload, _ := json.Marshal(proto.MsgData{Room: room, Text: text})
-		if err := wsjson.Write(ctx, conn, proto.Inbound{Type: "msg", Data: payload}); err != nil {
-			t.Fatalf("send msg: %v", err)
+		payload, marshalErr := json.Marshal(proto.MsgData{Room: room, Text: text})
+		if marshalErr != nil {
+			t.Fatalf("marshal msg: %v", marshalErr)
+		}
+		if writeErr := wsjson.Write(ctx, conn, proto.Inbound{Type: "msg", Data: payload}); writeErr != nil {
+			t.Fatalf("send msg: %v", writeErr)
 		}
 	}
 
@@ -99,8 +108,8 @@ func TestWebSocketHelloAndMessage(t *testing.T) {
 	waitFor := func(conn *websocket.Conn, expectEvent string) proto.Outbound {
 		for {
 			var outbound proto.Outbound
-			if err := wsjson.Read(ctx, conn, &outbound); err != nil {
-				t.Fatalf("read outbound: %v", err)
+			if readErr := wsjson.Read(ctx, conn, &outbound); readErr != nil {
+				t.Fatalf("read outbound: %v", readErr)
 			}
 			if outbound.Type != "event" || outbound.Event != expectEvent {
 				continue
@@ -111,13 +120,13 @@ func TestWebSocketHelloAndMessage(t *testing.T) {
 
 	// Ensure B's join processed before sending messages.
 	joinOutbound := waitFor(connB, "user_joined")
-	joinData, err := json.Marshal(joinOutbound.Data)
-	if err != nil {
-		t.Fatalf("marshal join outbound: %v", err)
+	joinData, joinMarshalErr := json.Marshal(joinOutbound.Data)
+	if joinMarshalErr != nil {
+		t.Fatalf("marshal join outbound: %v", joinMarshalErr)
 	}
 	var joinEvent proto.EventUserJoined
-	if err := json.Unmarshal(joinData, &joinEvent); err != nil {
-		t.Fatalf("unmarshal join event: %v", err)
+	if unmarshalErr := json.Unmarshal(joinData, &joinEvent); unmarshalErr != nil {
+		t.Fatalf("unmarshal join event: %v", unmarshalErr)
 	}
 	if joinEvent.User != "bob" || joinEvent.Room != "general" {
 		t.Fatalf("unexpected join event: %+v", joinEvent)
@@ -126,13 +135,13 @@ func TestWebSocketHelloAndMessage(t *testing.T) {
 	sendMsg(connA, "general", "hi there")
 
 	msgOutbound := waitFor(connB, "message")
-	msgData, err := json.Marshal(msgOutbound.Data)
-	if err != nil {
-		t.Fatalf("marshal message outbound: %v", err)
+	msgData, msgMarshalErr := json.Marshal(msgOutbound.Data)
+	if msgMarshalErr != nil {
+		t.Fatalf("marshal message outbound: %v", msgMarshalErr)
 	}
 	var event proto.EventMessage
-	if err := json.Unmarshal(msgData, &event); err != nil {
-		t.Fatalf("unmarshal event data: %v", err)
+	if unmarshalErr := json.Unmarshal(msgData, &event); unmarshalErr != nil {
+		t.Fatalf("unmarshal event data: %v", unmarshalErr)
 	}
 	if event.User != "alice" || event.Text != "hi there" || event.Room != "general" {
 		t.Fatalf("unexpected event payload: %+v", event)

@@ -33,7 +33,7 @@ func (r *Room) RemoveClient(c *Client) bool {
 }
 
 // Broadcast sends an event to all clients in the room.
-func (r *Room) Broadcast(event Event) {
+func (r *Room) Broadcast(event *Event) {
 	for client := range r.clients {
 		select {
 		case client.Events <- event:

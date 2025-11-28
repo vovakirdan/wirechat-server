@@ -37,7 +37,7 @@ type EventMessage struct {
 	Room string `json:"room,omitempty"`
 	User string `json:"user"`
 	Text string `json:"text"`
-	Ts   int64  `json:"ts"`
+	TS   int64  `json:"ts"`
 }
 
 // EventUserJoined notifies that a user joined a room.
