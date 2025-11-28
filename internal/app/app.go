@@ -14,6 +14,7 @@ import (
 type App struct {
 	server          *stdhttp.Server
 	shutdownTimeout time.Duration
+	hub             *core.Hub
 }
 
 // New constructs the application with provided configuration.
@@ -24,12 +25,15 @@ func New(cfg config.Config) *App {
 	return &App{
 		server:          server,
 		shutdownTimeout: cfg.ShutdownTimeout,
+		hub:             hub,
 	}
 }
 
 // Run starts the HTTP server and blocks until context cancellation or fatal error.
 func (a *App) Run(ctx context.Context) error {
 	serverErr := make(chan error, 1)
+
+	go a.hub.Run(ctx)
 
 	go func() {
 		if err := a.server.ListenAndServe(); err != nil && err != stdhttp.ErrServerClosed {
