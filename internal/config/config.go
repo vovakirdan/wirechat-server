@@ -12,6 +12,10 @@ type Config struct {
 	RateLimitMsgPerMin  int           `mapstructure:"rate_limit_msg_per_min" yaml:"rate_limit_msg_per_min"`
 	PingInterval        time.Duration `mapstructure:"ping_interval" yaml:"ping_interval"`
 	ClientIdleTimeout   time.Duration `mapstructure:"client_idle_timeout" yaml:"client_idle_timeout"`
+	JWTSecret           string        `mapstructure:"jwt_secret" yaml:"jwt_secret"`
+	JWTAudience         string        `mapstructure:"jwt_audience" yaml:"jwt_audience"`
+	JWTIssuer           string        `mapstructure:"jwt_issuer" yaml:"jwt_issuer"`
+	JWTRequired         bool          `mapstructure:"jwt_required" yaml:"jwt_required"`
 }
 
 // Default returns configuration with reasonable starter defaults.
@@ -25,11 +29,15 @@ func Default() Config {
 		RateLimitMsgPerMin:  300,
 		PingInterval:        30 * time.Second,
 		ClientIdleTimeout:   60 * time.Second,
+		JWTRequired:         false,
 	}
 }
 
 // UpdateFrom overwrites non-zero values from other config into receiver.
-func (c *Config) UpdateFrom(other Config) {
+func (c *Config) UpdateFrom(other *Config) {
+	if other == nil {
+		return
+	}
 	if other.Addr != "" {
 		c.Addr = other.Addr
 	}
@@ -53,5 +61,17 @@ func (c *Config) UpdateFrom(other Config) {
 	}
 	if other.ClientIdleTimeout != 0 {
 		c.ClientIdleTimeout = other.ClientIdleTimeout
+	}
+	if other.JWTSecret != "" {
+		c.JWTSecret = other.JWTSecret
+	}
+	if other.JWTAudience != "" {
+		c.JWTAudience = other.JWTAudience
+	}
+	if other.JWTIssuer != "" {
+		c.JWTIssuer = other.JWTIssuer
+	}
+	if other.JWTRequired {
+		c.JWTRequired = other.JWTRequired
 	}
 }

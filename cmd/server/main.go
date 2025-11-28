@@ -24,11 +24,11 @@ type serverFlags struct {
 }
 
 func main() {
-	cfg := config.Default()
+	baseCfg := config.Default()
 	flags := serverFlags{
-		addr:              cfg.Addr,
-		readHeaderTimeout: cfg.ReadHeaderTimeout,
-		shutdownTimeout:   cfg.ShutdownTimeout,
+		addr:              baseCfg.Addr,
+		readHeaderTimeout: baseCfg.ReadHeaderTimeout,
+		shutdownTimeout:   baseCfg.ShutdownTimeout,
 		logLevel:          "info",
 	}
 
@@ -36,7 +36,7 @@ func main() {
 		Use:   "wirechat-server",
 		Short: "WireChat server",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return run(cmd, flags, cfg)
+			return run(cmd, flags)
 		},
 	}
 
@@ -56,14 +56,13 @@ func main() {
 	stop()
 }
 
-func run(cmd *cobra.Command, flags serverFlags, cfg config.Config) error {
+func run(cmd *cobra.Command, flags serverFlags) error {
 	ctx := cmd.Context()
 
 	logger := intlog.New(flags.logLevel)
 	zerolog.DefaultContextLogger = logger
 
-	loadedCfg, cfgPath, err := config.Load(logger, flags.configPath)
-	cfg = loadedCfg
+	cfg, cfgPath, err := config.Load(logger, flags.configPath)
 	if err != nil {
 		logger.Warn().Err(err).Msg("failed to load config, using defaults where possible")
 	}

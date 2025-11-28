@@ -20,7 +20,7 @@ type App struct {
 }
 
 // New constructs the application with provided configuration.
-func New(cfg config.Config, logger *zerolog.Logger) *App {
+func New(cfg *config.Config, logger *zerolog.Logger) *App {
 	hub := core.NewHub()
 	server := transporthttp.NewServer(hub, cfg, logger)
 

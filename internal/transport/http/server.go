@@ -11,7 +11,7 @@ import (
 )
 
 // NewServer builds an HTTP server with basic routes.
-func NewServer(hub core.Hub, cfg config.Config, logger *zerolog.Logger) *stdhttp.Server {
+func NewServer(hub core.Hub, cfg *config.Config, logger *zerolog.Logger) *stdhttp.Server {
 	mux := stdhttp.NewServeMux()
 	mux.HandleFunc("/health", healthHandler)
 	mux.Handle("/ws", NewWSHandler(hub, cfg, logger))

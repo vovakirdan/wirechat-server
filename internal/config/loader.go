@@ -19,7 +19,7 @@ const (
 
 // Load builds configuration from defaults, optional config file, env vars, and returns the resolved path.
 // Precedence: defaults < config file < env vars < caller overrides.
-func Load(logger *zerolog.Logger, explicitPath string) (Config, string, error) {
+func Load(logger *zerolog.Logger, explicitPath string) (*Config, string, error) {
 	cfg := Default()
 
 	v := viper.New()
@@ -43,7 +43,7 @@ func Load(logger *zerolog.Logger, explicitPath string) (Config, string, error) {
 	if err := v.ReadInConfig(); err != nil {
 		var notFound viper.ConfigFileNotFoundError
 		if errors.As(err, &notFound) || errors.Is(err, os.ErrNotExist) {
-			if writeErr := writeDefaultConfig(configPath, cfg); writeErr != nil && logger != nil {
+			if writeErr := writeDefaultConfig(configPath, &cfg); writeErr != nil && logger != nil {
 				logger.Warn().Err(writeErr).Str("path", configPath).Msg("failed to write default config")
 			} else if logger != nil {
 				logger.Info().Str("path", configPath).Msg("created default config")
@@ -53,15 +53,15 @@ func Load(logger *zerolog.Logger, explicitPath string) (Config, string, error) {
 				logger.Warn().Err(readErr).Str("path", configPath).Msg("failed to read config after writing default")
 			}
 		} else {
-			return cfg, configPath, fmt.Errorf("read config: %w", err)
+			return &cfg, configPath, fmt.Errorf("read config: %w", err)
 		}
 	}
 
 	if err := v.Unmarshal(&cfg); err != nil {
-		return cfg, configPath, fmt.Errorf("unmarshal config: %w", err)
+		return &cfg, configPath, fmt.Errorf("unmarshal config: %w", err)
 	}
 
-	return cfg, configPath, nil
+	return &cfg, configPath, nil
 }
 
 func resolveConfigPath(explicitPath string) string {
@@ -82,7 +82,7 @@ func resolveConfigPath(explicitPath string) string {
 	return filepath.Join(cwd, defaultConfigName)
 }
 
-func writeDefaultConfig(path string, cfg Config) error {
+func writeDefaultConfig(path string, cfg *Config) error {
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		return err
 	}

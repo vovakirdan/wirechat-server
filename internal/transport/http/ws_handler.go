@@ -2,11 +2,13 @@ package http
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"io"
 	stdhttp "net/http"
 	"time"
 
+	"github.com/golang-jwt/jwt/v5"
 	"github.com/rs/zerolog"
 	"github.com/vovakirdan/wirechat-server/internal/config"
 	"github.com/vovakirdan/wirechat-server/internal/core"
@@ -20,11 +22,11 @@ import (
 type WSHandler struct {
 	hub    core.Hub
 	log    *zerolog.Logger
-	config config.Config
+	config *config.Config
 }
 
 // NewWSHandler builds a new WebSocket handler.
-func NewWSHandler(hub core.Hub, cfg config.Config, logger *zerolog.Logger) stdhttp.Handler {
+func NewWSHandler(hub core.Hub, cfg *config.Config, logger *zerolog.Logger) stdhttp.Handler {
 	return &WSHandler{hub: hub, log: logger, config: cfg}
 }
 
@@ -112,6 +114,8 @@ func (h *WSHandler) readLoop(ctx context.Context, conn *websocket.Conn, client *
 	joinLimiter.startReset(stopRate)
 	msgLimiter.startReset(stopRate)
 
+	authenticated := !h.config.JWTRequired
+
 	for {
 		var inbound proto.Inbound
 		if h.config.ClientIdleTimeout > 0 {
@@ -130,10 +134,22 @@ func (h *WSHandler) readLoop(ctx context.Context, conn *websocket.Conn, client *
 		}
 
 		cmd, protoErr, err := inboundToCommand(client, inbound)
+		if inbound.Type == "hello" && err == nil {
+			protoErr, err = h.handleHello(client, inbound)
+			if err == nil && protoErr == nil {
+				authenticated = true
+			}
+		}
+
 		if err != nil {
 			h.log.Warn().Err(err).Str("client_id", client.ID).Msg("failed to map inbound")
 			return err
 		}
+
+		if !authenticated && inbound.Type != "hello" && h.config.JWTRequired {
+			protoErr = &proto.Error{Code: "unauthorized", Msg: "hello with valid token required"}
+		}
+
 		if cmd != nil {
 			switch cmd.Kind {
 			case core.CommandJoinRoom:
@@ -206,4 +222,97 @@ func commandKindString(kind core.CommandKind) string {
 	default:
 		return "unknown"
 	}
+}
+
+func (h *WSHandler) handleHello(client *core.Client, inbound proto.Inbound) (*proto.Error, error) {
+	var hello proto.HelloData
+	if err := json.Unmarshal(inbound.Data, &hello); err != nil {
+		return nil, err
+	}
+
+	if h.config.JWTRequired || h.config.JWTSecret != "" {
+		if hello.Token == "" {
+			return &proto.Error{Code: "unauthorized", Msg: "token required"}, nil
+		}
+		claims, err := h.validateJWT(hello.Token)
+		if err != nil {
+			return &proto.Error{Code: "unauthorized", Msg: "invalid token"}, nil
+		}
+		if name, ok := claims["name"].(string); ok && name != "" {
+			client.Name = name
+		} else if sub, ok := claims["sub"].(string); ok && sub != "" {
+			client.Name = sub
+		}
+	} else if hello.User != "" {
+		client.Name = hello.User
+	}
+
+	return nil, nil
+}
+
+func (h *WSHandler) validateJWT(token string) (jwt.MapClaims, error) {
+	if h.config.JWTSecret == "" {
+		return nil, errors.New("no jwt secret configured")
+	}
+	parsed, err := jwt.Parse(token, func(t *jwt.Token) (interface{}, error) {
+		if _, ok := t.Method.(*jwt.SigningMethodHMAC); !ok {
+			return nil, errors.New("unexpected signing method")
+		}
+		return []byte(h.config.JWTSecret), nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	claims, ok := parsed.Claims.(jwt.MapClaims)
+	if !ok || !parsed.Valid {
+		return nil, errors.New("invalid claims")
+	}
+	if h.config.JWTAudience != "" && !verifyAudience(claims, h.config.JWTAudience) {
+		return nil, errors.New("invalid audience")
+	}
+	if h.config.JWTIssuer != "" && !verifyIssuer(claims, h.config.JWTIssuer) {
+		return nil, errors.New("invalid issuer")
+	}
+	return claims, nil
+}
+
+func verifyAudience(claims jwt.MapClaims, expected string) bool {
+	if expected == "" {
+		return true
+	}
+	val, ok := claims["aud"]
+	if !ok {
+		return false
+	}
+	switch v := val.(type) {
+	case string:
+		return v == expected
+	case []interface{}:
+		for _, item := range v {
+			if s, ok := item.(string); ok && s == expected {
+				return true
+			}
+		}
+	case []string:
+		for _, s := range v {
+			if s == expected {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+func verifyIssuer(claims jwt.MapClaims, expected string) bool {
+	if expected == "" {
+		return true
+	}
+	val, ok := claims["iss"]
+	if !ok {
+		return false
+	}
+	if s, ok := val.(string); ok {
+		return s == expected
+	}
+	return false
 }

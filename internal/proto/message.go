@@ -10,7 +10,8 @@ type Inbound struct {
 
 // HelloData is sent by the client to introduce itself.
 type HelloData struct {
-	User string `json:"user"`
+	User  string `json:"user"`
+	Token string `json:"token,omitempty"`
 }
 
 // JoinData requests to join a specific room.

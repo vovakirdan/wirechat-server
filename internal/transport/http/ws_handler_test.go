@@ -33,7 +33,7 @@ func startTestServer(t *testing.T) (*httptest.Server, context.CancelFunc) {
 		MaxMessageBytes:   1 << 20,
 	}
 
-	server := NewServer(hub, cfg, &disabledLogger)
+	server := NewServer(hub, &cfg, &disabledLogger)
 
 	ts := httptest.NewServer(server.Handler)
 	t.Cleanup(ts.Close)
@@ -50,7 +50,7 @@ func startTestServerWithConfig(t *testing.T, cfg config.Config) (*httptest.Serve
 
 	disabledLogger := zerolog.New(io.Discard)
 
-	server := NewServer(hub, cfg, &disabledLogger)
+	server := NewServer(hub, &cfg, &disabledLogger)
 
 	ts := httptest.NewServer(server.Handler)
 	t.Cleanup(ts.Close)

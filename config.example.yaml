@@ -21,3 +21,15 @@ ping_interval: 30s
 
 # Disconnect clients idle longer than this
 client_idle_timeout: 60s
+
+# Shared secret for JWT validation (HS256). Leave empty to disable JWT requirement.
+jwt_secret: ""
+
+# Optional expected JWT audience
+jwt_audience: ""
+
+# Optional expected JWT issuer
+jwt_issuer: ""
+
+# Require JWT on hello (true/false)
+jwt_required: false

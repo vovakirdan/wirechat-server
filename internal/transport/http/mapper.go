@@ -11,15 +11,6 @@ import (
 
 func inboundToCommand(client *core.Client, inbound proto.Inbound) (*core.Command, *proto.Error, error) {
 	switch inbound.Type {
-	case "hello":
-		var hello proto.HelloData
-		if err := json.Unmarshal(inbound.Data, &hello); err != nil {
-			return nil, nil, err
-		}
-		if hello.User != "" {
-			client.Name = hello.User
-		}
-		return nil, nil, nil
 	case "join":
 		var join proto.JoinData
 		if err := json.Unmarshal(inbound.Data, &join); err != nil {
