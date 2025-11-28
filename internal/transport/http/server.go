@@ -14,7 +14,7 @@ import (
 func NewServer(hub core.Hub, cfg config.Config, logger *zerolog.Logger) *stdhttp.Server {
 	mux := stdhttp.NewServeMux()
 	mux.HandleFunc("/health", healthHandler)
-	mux.Handle("/ws", NewWSHandler(hub, logger))
+	mux.Handle("/ws", NewWSHandler(hub, cfg, logger))
 
 	return &stdhttp.Server{
 		Addr:              cfg.Addr,

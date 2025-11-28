@@ -8,6 +8,7 @@ import (
 
 	"github.com/rs/zerolog"
 	"github.com/vovakirdan/wirechat-server/internal/core"
+	"github.com/vovakirdan/wirechat-server/internal/config"
 	"github.com/vovakirdan/wirechat-server/internal/proto"
 	"github.com/vovakirdan/wirechat-server/internal/utils"
 	"nhooyr.io/websocket"
@@ -16,13 +17,14 @@ import (
 
 // WSHandler upgrades HTTP connections and bridges them to core.Client.
 type WSHandler struct {
-	hub core.Hub
-	log *zerolog.Logger
+	hub    core.Hub
+	log    *zerolog.Logger
+	config config.Config
 }
 
 // NewWSHandler builds a new WebSocket handler.
-func NewWSHandler(hub core.Hub, logger *zerolog.Logger) stdhttp.Handler {
-	return &WSHandler{hub: hub, log: logger}
+func NewWSHandler(hub core.Hub, cfg config.Config, logger *zerolog.Logger) stdhttp.Handler {
+	return &WSHandler{hub: hub, log: logger, config: cfg}
 }
 
 func (h *WSHandler) ServeHTTP(w stdhttp.ResponseWriter, r *stdhttp.Request) {
@@ -37,6 +39,10 @@ func (h *WSHandler) ServeHTTP(w stdhttp.ResponseWriter, r *stdhttp.Request) {
 		return
 	}
 	defer conn.Close(websocket.StatusInternalError, "internal error")
+
+	if h.config.MaxMessageBytes > 0 {
+		conn.SetReadLimit(h.config.MaxMessageBytes)
+	}
 
 	client := core.NewClient(utils.NewID(), "")
 	h.hub.RegisterClient(client)

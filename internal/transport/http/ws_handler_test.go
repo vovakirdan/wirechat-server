@@ -26,11 +26,31 @@ func startTestServer(t *testing.T) (*httptest.Server, context.CancelFunc) {
 
 	disabledLogger := zerolog.New(io.Discard)
 
-	server := NewServer(hub, config.Config{
+	cfg := config.Config{
 		Addr:              ":0",
 		ReadHeaderTimeout: time.Second,
 		ShutdownTimeout:   time.Second,
-	}, &disabledLogger)
+		MaxMessageBytes:   1 << 20,
+	}
+
+	server := NewServer(hub, cfg, &disabledLogger)
+
+	ts := httptest.NewServer(server.Handler)
+	t.Cleanup(ts.Close)
+
+	return ts, cancel
+}
+
+func startTestServerWithConfig(t *testing.T, cfg config.Config) (*httptest.Server, context.CancelFunc) {
+	t.Helper()
+
+	hub := core.NewHub()
+	ctx, cancel := context.WithCancel(context.Background())
+	go hub.Run(ctx)
+
+	disabledLogger := zerolog.New(io.Discard)
+
+	server := NewServer(hub, cfg, &disabledLogger)
 
 	ts := httptest.NewServer(server.Handler)
 	t.Cleanup(ts.Close)
@@ -149,5 +169,79 @@ func TestWebSocketHelloAndMessage(t *testing.T) {
 	}
 	if event.User != "alice" || event.Text != "hi there" || event.Room != "general" {
 		t.Fatalf("unexpected event payload: %+v", event)
+	}
+}
+
+func TestWebSocketMessageTooLarge(t *testing.T) {
+	cfg := config.Config{
+		Addr:              ":0",
+		ReadHeaderTimeout: time.Second,
+		ShutdownTimeout:   time.Second,
+		MaxMessageBytes:   32, // very small
+	}
+	ts, cancel := startTestServerWithConfig(t, cfg)
+	defer cancel()
+
+	wsURL := strings.Replace(ts.URL, "http", "ws", 1) + "/ws"
+
+	ctx, closeCtx := context.WithTimeout(context.Background(), 5*time.Second)
+	defer closeCtx()
+
+	conn, _, err := websocket.Dial(ctx, wsURL, nil)
+	if err != nil {
+		t.Fatalf("dial: %v", err)
+	}
+	defer conn.Close(websocket.StatusNormalClosure, "done")
+
+	payload, _ := json.Marshal(proto.HelloData{User: "big"})
+	if err := wsjson.Write(ctx, conn, proto.Inbound{Type: "hello", Data: payload}); err != nil {
+		t.Fatalf("send hello: %v", err)
+	}
+
+	largeMsg := proto.MsgData{Room: "general", Text: strings.Repeat("a", 1024)}
+	data, _ := json.Marshal(largeMsg)
+	_ = wsjson.Write(ctx, conn, proto.Inbound{Type: "msg", Data: data})
+
+	var outbound proto.Outbound
+	err = wsjson.Read(ctx, conn, &outbound)
+	if err == nil {
+		t.Fatalf("expected error due to message too large, got %+v", outbound)
+	}
+	if s := websocket.CloseStatus(err); s != websocket.StatusMessageTooBig && s != websocket.StatusInternalError {
+		t.Fatalf("expected StatusMessageTooBig, got %v (err=%v)", s, err)
+	}
+}
+
+func TestServerShutdownClosesConnections(t *testing.T) {
+	ts, cancel := startTestServer(t)
+	defer cancel()
+
+	wsURL := strings.Replace(ts.URL, "http", "ws", 1) + "/ws"
+
+	ctx, closeCtx := context.WithTimeout(context.Background(), 5*time.Second)
+	defer closeCtx()
+
+	conn, _, err := websocket.Dial(ctx, wsURL, nil)
+	if err != nil {
+		t.Fatalf("dial: %v", err)
+	}
+	defer conn.Close(websocket.StatusNormalClosure, "done")
+
+	payload, _ := json.Marshal(proto.HelloData{User: "alice"})
+	if err := wsjson.Write(ctx, conn, proto.Inbound{Type: "hello", Data: payload}); err != nil {
+		t.Fatalf("send hello: %v", err)
+	}
+
+	// trigger shutdown
+	cancel()
+
+	var outbound proto.Outbound
+	err = wsjson.Read(ctx, conn, &outbound)
+	if err == nil {
+		t.Fatalf("expected connection close, got message %+v", outbound)
+	}
+	status := websocket.CloseStatus(err)
+	if status == 0 {
+		t.Fatalf("expected close status, got err=%v", err)
 	}
 }

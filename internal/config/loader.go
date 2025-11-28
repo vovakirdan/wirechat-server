@@ -27,6 +27,7 @@ func Load(logger *zerolog.Logger, explicitPath string) (Config, string, error) {
 	v.SetDefault("addr", cfg.Addr)
 	v.SetDefault("read_header_timeout", cfg.ReadHeaderTimeout)
 	v.SetDefault("shutdown_timeout", cfg.ShutdownTimeout)
+	v.SetDefault("max_message_bytes", cfg.MaxMessageBytes)
 
 	v.SetEnvPrefix("WIRECHAT")
 	v.SetEnvKeyReplacer(strings.NewReplacer(".", "_"))

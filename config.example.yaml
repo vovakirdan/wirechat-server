@@ -6,3 +6,6 @@ read_header_timeout: 5s
 
 # Graceful shutdown timeout
 shutdown_timeout: 5s
+
+# Maximum inbound WebSocket message size in bytes
+max_message_bytes: 1048576
