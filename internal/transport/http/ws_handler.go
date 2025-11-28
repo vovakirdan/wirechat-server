@@ -8,14 +8,14 @@ import (
 	stdhttp "net/http"
 	"time"
 
+	"github.com/coder/websocket"
+	"github.com/coder/websocket/wsjson"
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/rs/zerolog"
 	"github.com/vovakirdan/wirechat-server/internal/config"
 	"github.com/vovakirdan/wirechat-server/internal/core"
 	"github.com/vovakirdan/wirechat-server/internal/proto"
 	"github.com/vovakirdan/wirechat-server/internal/utils"
-	"github.com/coder/websocket"
-	"github.com/coder/websocket/wsjson"
 )
 
 // WSHandler upgrades HTTP connections and bridges them to core.Client.
@@ -122,12 +122,18 @@ func (h *WSHandler) readLoop(ctx context.Context, conn *websocket.Conn, client *
 			readCtx, cancelRead := context.WithDeadline(ctx, time.Now().Add(h.config.ClientIdleTimeout))
 			if err := wsjson.Read(readCtx, conn, &inbound); err != nil {
 				cancelRead()
+				if isExpectedClose(err) {
+					return nil
+				}
 				h.log.Warn().Err(err).Str("client_id", client.ID).Msg("read ws inbound")
 				return err
 			}
 			cancelRead()
 		} else {
 			if err := wsjson.Read(ctx, conn, &inbound); err != nil {
+				if isExpectedClose(err) {
+					return nil
+				}
 				h.log.Warn().Err(err).Str("client_id", client.ID).Msg("read ws inbound")
 				return err
 			}
@@ -184,6 +190,21 @@ func (h *WSHandler) readLoop(ctx context.Context, conn *websocket.Conn, client *
 				Msg("inbound command")
 			client.Commands <- cmd
 		}
+	}
+}
+
+func isExpectedClose(err error) bool {
+	if err == nil {
+		return false
+	}
+	if errors.Is(err, context.Canceled) || errors.Is(err, io.EOF) {
+		return true
+	}
+	switch websocket.CloseStatus(err) {
+	case websocket.StatusNormalClosure, websocket.StatusGoingAway:
+		return true
+	default:
+		return false
 	}
 }
 
