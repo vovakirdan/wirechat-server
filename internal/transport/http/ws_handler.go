@@ -7,8 +7,8 @@ import (
 	stdhttp "net/http"
 
 	"github.com/rs/zerolog"
-	"github.com/vovakirdan/wirechat-server/internal/core"
 	"github.com/vovakirdan/wirechat-server/internal/config"
+	"github.com/vovakirdan/wirechat-server/internal/core"
 	"github.com/vovakirdan/wirechat-server/internal/proto"
 	"github.com/vovakirdan/wirechat-server/internal/utils"
 	"nhooyr.io/websocket"
