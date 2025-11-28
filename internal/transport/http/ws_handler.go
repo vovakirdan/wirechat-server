@@ -2,12 +2,10 @@ package http
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"io"
 	"log"
 	stdhttp "net/http"
-	"time"
 
 	"github.com/vovakirdan/wirechat-server/internal/core"
 	"github.com/vovakirdan/wirechat-server/internal/proto"
@@ -18,11 +16,11 @@ import (
 
 // WSHandler upgrades HTTP connections and bridges them to core.Client.
 type WSHandler struct {
-	hub *core.Hub
+	hub core.Hub
 }
 
 // NewWSHandler builds a new WebSocket handler.
-func NewWSHandler(hub *core.Hub) stdhttp.Handler {
+func NewWSHandler(hub core.Hub) stdhttp.Handler {
 	return &WSHandler{hub: hub}
 }
 
@@ -88,51 +86,12 @@ func (h *WSHandler) readLoop(ctx context.Context, conn *websocket.Conn, client *
 			return err
 		}
 
-		switch inbound.Type {
-		case "hello":
-			var hello proto.HelloData
-			if err := json.Unmarshal(inbound.Data, &hello); err != nil {
-				return err
-			}
-			if hello.User != "" {
-				client.Name = hello.User
-			}
-		case "join":
-			var join proto.JoinData
-			if err := json.Unmarshal(inbound.Data, &join); err != nil {
-				return err
-			}
-			client.Commands <- &core.Command{
-				Kind: core.CommandJoinRoom,
-				Room: join.Room,
-			}
-		case "leave":
-			var leave proto.JoinData
-			if err := json.Unmarshal(inbound.Data, &leave); err != nil {
-				return err
-			}
-			client.Commands <- &core.Command{
-				Kind: core.CommandLeaveRoom,
-				Room: leave.Room,
-			}
-		case "msg":
-			var msg proto.MsgData
-			if err := json.Unmarshal(inbound.Data, &msg); err != nil {
-				return err
-			}
-			client.Commands <- &core.Command{
-				Kind: core.CommandSendRoomMessage,
-				Room: msg.Room,
-				Message: core.Message{
-					ID:        utils.NewID(),
-					Room:      msg.Room,
-					From:      client.Name,
-					Text:      msg.Text,
-					CreatedAt: time.Now(),
-				},
-			}
-		default:
-			// Unknown types are ignored for now.
+		cmd, err := inboundToCommand(client, inbound)
+		if err != nil {
+			return err
+		}
+		if cmd != nil {
+			client.Commands <- cmd
 		}
 	}
 }
@@ -144,47 +103,11 @@ func (h *WSHandler) writeLoop(ctx context.Context, conn *websocket.Conn, client 
 			if !ok {
 				return nil
 			}
-			if err := wsjson.Write(ctx, conn, eventToOutbound(event)); err != nil {
+			if err := wsjson.Write(ctx, conn, outboundFromEvent(event)); err != nil {
 				return err
 			}
 		case <-ctx.Done():
 			return ctx.Err()
 		}
-	}
-}
-
-func eventToOutbound(event *core.Event) proto.Outbound {
-	switch event.Kind {
-	case core.EventRoomMessage:
-		return proto.Outbound{
-			Type:  "event",
-			Event: "message",
-			Data: proto.EventMessage{
-				Room: event.Message.Room,
-				User: event.Message.From,
-				Text: event.Message.Text,
-				TS:   event.Message.CreatedAt.Unix(),
-			},
-		}
-	case core.EventUserJoined:
-		return proto.Outbound{
-			Type:  "event",
-			Event: "user_joined",
-			Data: proto.EventUserJoined{
-				Room: event.Room,
-				User: event.User,
-			},
-		}
-	case core.EventUserLeft:
-		return proto.Outbound{
-			Type:  "event",
-			Event: "user_left",
-			Data: proto.EventUserLeft{
-				Room: event.Room,
-				User: event.User,
-			},
-		}
-	default:
-		return proto.Outbound{Type: "event"}
 	}
 }

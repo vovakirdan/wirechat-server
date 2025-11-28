@@ -6,7 +6,13 @@ import (
 )
 
 // Hub coordinates connected clients and message broadcasts.
-type Hub struct {
+type Hub interface {
+	RegisterClient(*Client)
+	UnregisterClient(*Client)
+	Run(ctx context.Context)
+}
+
+type coreHub struct {
 	register   chan *Client
 	unregister chan *Client
 	commands   chan clientCommand
@@ -20,8 +26,8 @@ type clientCommand struct {
 }
 
 // NewHub creates a new chat hub instance.
-func NewHub() *Hub {
-	return &Hub{
+func NewHub() Hub {
+	return &coreHub{
 		register:   make(chan *Client, 16),
 		unregister: make(chan *Client, 16),
 		commands:   make(chan clientCommand, 64),
@@ -31,7 +37,7 @@ func NewHub() *Hub {
 }
 
 // Run starts the main event loop until context cancellation.
-func (h *Hub) Run(ctx context.Context) {
+func (h *coreHub) Run(ctx context.Context) {
 	for {
 		select {
 		case client := <-h.register:
@@ -50,27 +56,27 @@ func (h *Hub) Run(ctx context.Context) {
 
 // RegisterClient schedules a client for registration.
 // Non-blocking: если канал заполнен или hub остановлен, регистрация пропускается.
-func (h *Hub) RegisterClient(client *Client) {
+func (h *coreHub) RegisterClient(client *Client) {
 	select {
 	case h.register <- client:
 	default:
-		// Канал заполнен или hub остановлен - пропускаем регистрацию
+		// Канал заполнен или hub остановлен - пропускаем регистрацию.
 	}
 }
 
 // UnregisterClient schedules a client for removal.
 // Non-blocking: если канал заполнен или hub остановлен, отправка пропускается.
 // Это предотвращает блокировку во время graceful shutdown.
-func (h *Hub) UnregisterClient(client *Client) {
+func (h *coreHub) UnregisterClient(client *Client) {
 	select {
 	case h.unregister <- client:
 	default:
-		// Канал заполнен или hub остановлен - пропускаем отправку
-		// Во время shutdown hub сам закроет все клиенты через shutdown()
+		// Канал заполнен или hub остановлен - пропускаем отправку.
+		// Во время shutdown hub сам закроет все клиенты через shutdown().
 	}
 }
 
-func (h *Hub) consumeCommands(ctx context.Context, client *Client) {
+func (h *coreHub) consumeCommands(ctx context.Context, client *Client) {
 	for {
 		select {
 		case cmd, ok := <-client.Commands:
@@ -88,7 +94,7 @@ func (h *Hub) consumeCommands(ctx context.Context, client *Client) {
 	}
 }
 
-func (h *Hub) handleCommand(client *Client, cmd *Command) {
+func (h *coreHub) handleCommand(client *Client, cmd *Command) {
 	switch cmd.Kind {
 	case CommandJoinRoom:
 		h.joinRoom(client, cmd.Room)
@@ -101,7 +107,7 @@ func (h *Hub) handleCommand(client *Client, cmd *Command) {
 	}
 }
 
-func (h *Hub) joinRoom(client *Client, roomName string) {
+func (h *coreHub) joinRoom(client *Client, roomName string) {
 	if roomName == "" {
 		return
 	}
@@ -117,7 +123,7 @@ func (h *Hub) joinRoom(client *Client, roomName string) {
 	})
 }
 
-func (h *Hub) leaveRoom(client *Client, roomName string) {
+func (h *coreHub) leaveRoom(client *Client, roomName string) {
 	room, ok := h.rooms[roomName]
 	if !ok {
 		return
@@ -136,7 +142,7 @@ func (h *Hub) leaveRoom(client *Client, roomName string) {
 	}
 }
 
-func (h *Hub) sendRoomMessage(client *Client, cmd *Command) {
+func (h *coreHub) sendRoomMessage(client *Client, cmd *Command) {
 	if cmd.Room == "" {
 		return
 	}
@@ -160,7 +166,7 @@ func (h *Hub) sendRoomMessage(client *Client, cmd *Command) {
 	})
 }
 
-func (h *Hub) removeClient(client *Client) {
+func (h *coreHub) removeClient(client *Client) {
 	if _, ok := h.clients[client]; !ok {
 		return
 	}
@@ -171,13 +177,13 @@ func (h *Hub) removeClient(client *Client) {
 	close(client.Events)
 }
 
-func (h *Hub) shutdown() {
+func (h *coreHub) shutdown() {
 	for client := range h.clients {
 		close(client.Events)
 	}
 }
 
-func (h *Hub) ensureRoom(name string) *Room {
+func (h *coreHub) ensureRoom(name string) *Room {
 	room, ok := h.rooms[name]
 	if ok {
 		return room
@@ -187,7 +193,7 @@ func (h *Hub) ensureRoom(name string) *Room {
 	return room
 }
 
-func (h *Hub) broadcastToRoom(roomName string, event *Event) {
+func (h *coreHub) broadcastToRoom(roomName string, event *Event) {
 	room, ok := h.rooms[roomName]
 	if !ok {
 		return

@@ -14,7 +14,7 @@ import (
 type App struct {
 	server          *stdhttp.Server
 	shutdownTimeout time.Duration
-	hub             *core.Hub
+	hub             core.Hub
 }
 
 // New constructs the application with provided configuration.
