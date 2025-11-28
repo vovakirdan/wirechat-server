@@ -134,7 +134,7 @@ func (h *WSHandler) readLoop(ctx context.Context, conn *websocket.Conn, client *
 		}
 
 		cmd, protoErr, err := inboundToCommand(client, inbound)
-		if inbound.Type == "hello" && err == nil {
+		if inbound.Type == proto.InboundTypeHello && err == nil {
 			protoErr, err = h.handleHello(client, inbound)
 			if err == nil && protoErr == nil {
 				authenticated = true
@@ -146,7 +146,7 @@ func (h *WSHandler) readLoop(ctx context.Context, conn *websocket.Conn, client *
 			return err
 		}
 
-		if !authenticated && inbound.Type != "hello" && h.config.JWTRequired {
+		if !authenticated && inbound.Type != proto.InboundTypeHello && h.config.JWTRequired {
 			protoErr = &proto.Error{Code: "unauthorized", Msg: "hello with valid token required"}
 		}
 
@@ -228,6 +228,10 @@ func (h *WSHandler) handleHello(client *core.Client, inbound proto.Inbound) (*pr
 	var hello proto.HelloData
 	if err := json.Unmarshal(inbound.Data, &hello); err != nil {
 		return nil, err
+	}
+
+	if hello.Protocol != 0 && hello.Protocol != proto.ProtocolVersion {
+		return &proto.Error{Code: "unsupported_version", Msg: "unsupported protocol version"}, nil
 	}
 
 	if h.config.JWTRequired || h.config.JWTSecret != "" {

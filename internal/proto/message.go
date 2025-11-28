@@ -8,10 +8,23 @@ type Inbound struct {
 	Data json.RawMessage `json:"data"`
 }
 
+const (
+	ProtocolVersion = 1
+
+	InboundTypeHello = "hello"
+	InboundTypeJoin  = "join"
+	InboundTypeLeave = "leave"
+	InboundTypeMsg   = "msg"
+
+	OutboundTypeEvent = "event"
+	OutboundTypeError = "error"
+)
+
 // HelloData is sent by the client to introduce itself.
 type HelloData struct {
-	User  string `json:"user"`
-	Token string `json:"token,omitempty"`
+	User     string `json:"user"`
+	Token    string `json:"token,omitempty"`
+	Protocol int    `json:"protocol,omitempty"`
 }
 
 // JoinData requests to join a specific room.

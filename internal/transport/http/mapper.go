@@ -11,7 +11,7 @@ import (
 
 func inboundToCommand(client *core.Client, inbound proto.Inbound) (*core.Command, *proto.Error, error) {
 	switch inbound.Type {
-	case "join":
+	case proto.InboundTypeJoin:
 		var join proto.JoinData
 		if err := json.Unmarshal(inbound.Data, &join); err != nil {
 			return nil, nil, err
@@ -23,7 +23,7 @@ func inboundToCommand(client *core.Client, inbound proto.Inbound) (*core.Command
 			Kind: core.CommandJoinRoom,
 			Room: join.Room,
 		}, nil, nil
-	case "leave":
+	case proto.InboundTypeLeave:
 		var leave proto.JoinData
 		if err := json.Unmarshal(inbound.Data, &leave); err != nil {
 			return nil, nil, err
@@ -35,7 +35,7 @@ func inboundToCommand(client *core.Client, inbound proto.Inbound) (*core.Command
 			Kind: core.CommandLeaveRoom,
 			Room: leave.Room,
 		}, nil, nil
-	case "msg":
+	case proto.InboundTypeMsg:
 		var msg proto.MsgData
 		if err := json.Unmarshal(inbound.Data, &msg); err != nil {
 			return nil, nil, err

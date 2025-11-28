@@ -95,7 +95,7 @@ func TestWebSocketHelloAndMessage(t *testing.T) {
 	defer connB.Close(websocket.StatusNormalClosure, "done")
 
 	sendHello := func(conn *websocket.Conn, user string) {
-		payload, marshalErr := json.Marshal(proto.HelloData{User: user})
+		payload, marshalErr := json.Marshal(proto.HelloData{User: user, Protocol: proto.ProtocolVersion})
 		if marshalErr != nil {
 			t.Fatalf("marshal hello: %v", marshalErr)
 		}

@@ -81,7 +81,7 @@ func TestWebSocketJWTSuccess(t *testing.T) {
 	}
 	defer conn.Close(websocket.StatusNormalClosure, "done")
 
-	helloPayload, _ := json.Marshal(proto.HelloData{Token: token})
+	helloPayload, _ := json.Marshal(proto.HelloData{Token: token, Protocol: proto.ProtocolVersion})
 	if writeErr := wsjson.Write(ctx, conn, proto.Inbound{Type: "hello", Data: helloPayload}); writeErr != nil {
 		t.Fatalf("send hello: %v", writeErr)
 	}
@@ -120,7 +120,7 @@ func TestWebSocketJWTInvalid(t *testing.T) {
 	}
 	defer conn.Close(websocket.StatusNormalClosure, "done")
 
-	helloPayload, _ := json.Marshal(proto.HelloData{Token: "invalid"})
+	helloPayload, _ := json.Marshal(proto.HelloData{Token: "invalid", Protocol: proto.ProtocolVersion})
 	if writeErr := wsjson.Write(ctx, conn, proto.Inbound{Type: "hello", Data: helloPayload}); writeErr != nil {
 		t.Fatalf("send hello: %v", writeErr)
 	}
