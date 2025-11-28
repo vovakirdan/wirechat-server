@@ -49,3 +49,5 @@ pkg/
 *.yaml
 *.yml
 !config.example.yaml
+!.github/workflows/*.yaml
+!.github/workflows/*.yml
