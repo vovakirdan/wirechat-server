@@ -5,6 +5,7 @@ import (
 	"errors"
 	"io"
 	stdhttp "net/http"
+	"time"
 
 	"github.com/rs/zerolog"
 	"github.com/vovakirdan/wirechat-server/internal/config"
@@ -57,8 +58,9 @@ func (h *WSHandler) ServeHTTP(w stdhttp.ResponseWriter, r *stdhttp.Request) {
 	defer cancel()
 
 	errCh := make(chan error, 2)
+	stopRate := make(chan struct{})
 	go func() {
-		errCh <- h.readLoop(ctx, conn, client)
+		errCh <- h.readLoop(ctx, conn, client, stopRate)
 	}()
 	go func() {
 		errCh <- h.writeLoop(ctx, conn, client)
@@ -67,6 +69,7 @@ func (h *WSHandler) ServeHTTP(w stdhttp.ResponseWriter, r *stdhttp.Request) {
 	err = <-errCh
 	cancel() // stop the other goroutine
 	<-errCh
+	close(stopRate)
 
 	status := websocket.StatusNormalClosure
 	reason := "closing"
@@ -103,18 +106,45 @@ func (h *WSHandler) ServeHTTP(w stdhttp.ResponseWriter, r *stdhttp.Request) {
 		Msg("ws disconnected")
 }
 
-func (h *WSHandler) readLoop(ctx context.Context, conn *websocket.Conn, client *core.Client) error {
+func (h *WSHandler) readLoop(ctx context.Context, conn *websocket.Conn, client *core.Client, stopRate <-chan struct{}) error {
+	joinLimiter := newRateLimiter(h.config.RateLimitJoinPerMin)
+	msgLimiter := newRateLimiter(h.config.RateLimitMsgPerMin)
+	joinLimiter.startReset(stopRate)
+	msgLimiter.startReset(stopRate)
+
 	for {
 		var inbound proto.Inbound
-		if err := wsjson.Read(ctx, conn, &inbound); err != nil {
-			h.log.Warn().Err(err).Str("client_id", client.ID).Msg("read ws inbound")
-			return err
+		if h.config.ClientIdleTimeout > 0 {
+			readCtx, cancelRead := context.WithDeadline(ctx, time.Now().Add(h.config.ClientIdleTimeout))
+			if err := wsjson.Read(readCtx, conn, &inbound); err != nil {
+				cancelRead()
+				h.log.Warn().Err(err).Str("client_id", client.ID).Msg("read ws inbound")
+				return err
+			}
+			cancelRead()
+		} else {
+			if err := wsjson.Read(ctx, conn, &inbound); err != nil {
+				h.log.Warn().Err(err).Str("client_id", client.ID).Msg("read ws inbound")
+				return err
+			}
 		}
 
 		cmd, protoErr, err := inboundToCommand(client, inbound)
 		if err != nil {
 			h.log.Warn().Err(err).Str("client_id", client.ID).Msg("failed to map inbound")
 			return err
+		}
+		if cmd != nil {
+			switch cmd.Kind {
+			case core.CommandJoinRoom:
+				if !joinLimiter.allow() {
+					protoErr = &proto.Error{Code: "rate_limited", Msg: "too many join requests"}
+				}
+			case core.CommandSendRoomMessage:
+				if !msgLimiter.allow() {
+					protoErr = &proto.Error{Code: "rate_limited", Msg: "too many messages"}
+				}
+			}
 		}
 		if protoErr != nil {
 			h.log.Warn().

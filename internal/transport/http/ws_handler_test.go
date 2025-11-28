@@ -174,10 +174,12 @@ func TestWebSocketHelloAndMessage(t *testing.T) {
 
 func TestWebSocketMessageTooLarge(t *testing.T) {
 	cfg := config.Config{
-		Addr:              ":0",
-		ReadHeaderTimeout: time.Second,
-		ShutdownTimeout:   time.Second,
-		MaxMessageBytes:   32, // very small
+		Addr:                ":0",
+		ReadHeaderTimeout:   time.Second,
+		ShutdownTimeout:     time.Second,
+		MaxMessageBytes:     32, // very small
+		RateLimitJoinPerMin: 100,
+		RateLimitMsgPerMin:  100,
 	}
 	ts, cancel := startTestServerWithConfig(t, cfg)
 	defer cancel()
@@ -243,5 +245,61 @@ func TestServerShutdownClosesConnections(t *testing.T) {
 	status := websocket.CloseStatus(err)
 	if status == 0 {
 		t.Fatalf("expected close status, got err=%v", err)
+	}
+}
+
+func TestWebSocketRateLimitMessage(t *testing.T) {
+	cfg := config.Config{
+		Addr:                ":0",
+		ReadHeaderTimeout:   time.Second,
+		ShutdownTimeout:     time.Second,
+		MaxMessageBytes:     1 << 20,
+		RateLimitJoinPerMin: 10,
+		RateLimitMsgPerMin:  1, // allow only one message
+	}
+	ts, cancel := startTestServerWithConfig(t, cfg)
+	defer cancel()
+
+	wsURL := strings.Replace(ts.URL, "http", "ws", 1) + "/ws"
+
+	ctx, closeCtx := context.WithTimeout(context.Background(), 5*time.Second)
+	defer closeCtx()
+
+	conn, _, err := websocket.Dial(ctx, wsURL, nil)
+	if err != nil {
+		t.Fatalf("dial: %v", err)
+	}
+	defer conn.Close(websocket.StatusNormalClosure, "done")
+
+	payload, _ := json.Marshal(proto.HelloData{User: "alice"})
+	if writeErr := wsjson.Write(ctx, conn, proto.Inbound{Type: "hello", Data: payload}); writeErr != nil {
+		t.Fatalf("send hello: %v", writeErr)
+	}
+	joinPayload, _ := json.Marshal(proto.JoinData{Room: "general"})
+	if writeErr := wsjson.Write(ctx, conn, proto.Inbound{Type: "join", Data: joinPayload}); writeErr != nil {
+		t.Fatalf("send join: %v", writeErr)
+	}
+
+	msgPayload, _ := json.Marshal(proto.MsgData{Room: "general", Text: "first"})
+	if writeErr := wsjson.Write(ctx, conn, proto.Inbound{Type: "msg", Data: msgPayload}); writeErr != nil {
+		t.Fatalf("send msg1: %v", writeErr)
+	}
+
+	msgPayload2, _ := json.Marshal(proto.MsgData{Room: "general", Text: "second"})
+	if writeErr := wsjson.Write(ctx, conn, proto.Inbound{Type: "msg", Data: msgPayload2}); writeErr != nil {
+		t.Fatalf("send msg2: %v", writeErr)
+	}
+
+	for {
+		var outbound proto.Outbound
+		if err := wsjson.Read(ctx, conn, &outbound); err != nil {
+			t.Fatalf("read outbound: %v", err)
+		}
+		if outbound.Type == "error" && outbound.Error != nil {
+			if outbound.Error.Code != "rate_limited" {
+				t.Fatalf("expected rate_limited error, got %+v", outbound)
+			}
+			return
+		}
 	}
 }

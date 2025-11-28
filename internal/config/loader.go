@@ -28,6 +28,10 @@ func Load(logger *zerolog.Logger, explicitPath string) (Config, string, error) {
 	v.SetDefault("read_header_timeout", cfg.ReadHeaderTimeout)
 	v.SetDefault("shutdown_timeout", cfg.ShutdownTimeout)
 	v.SetDefault("max_message_bytes", cfg.MaxMessageBytes)
+	v.SetDefault("rate_limit_join_per_min", cfg.RateLimitJoinPerMin)
+	v.SetDefault("rate_limit_msg_per_min", cfg.RateLimitMsgPerMin)
+	v.SetDefault("ping_interval", cfg.PingInterval)
+	v.SetDefault("client_idle_timeout", cfg.ClientIdleTimeout)
 
 	v.SetEnvPrefix("WIRECHAT")
 	v.SetEnvKeyReplacer(strings.NewReplacer(".", "_"))

@@ -9,3 +9,15 @@ shutdown_timeout: 5s
 
 # Maximum inbound WebSocket message size in bytes
 max_message_bytes: 1048576
+
+# Max number of join commands per minute per connection
+rate_limit_join_per_min: 60
+
+# Max number of message commands per minute per connection
+rate_limit_msg_per_min: 300
+
+# Interval for WebSocket ping frames
+ping_interval: 30s
+
+# Disconnect clients idle longer than this
+client_idle_timeout: 60s
