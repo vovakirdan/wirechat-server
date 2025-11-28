@@ -27,6 +27,7 @@ func NewWSHandler(hub core.Hub, logger *zerolog.Logger) stdhttp.Handler {
 
 func (h *WSHandler) ServeHTTP(w stdhttp.ResponseWriter, r *stdhttp.Request) {
 	ctx := r.Context()
+	remote := r.RemoteAddr
 
 	conn, err := websocket.Accept(w, r, &websocket.AcceptOptions{
 		InsecureSkipVerify: true,
@@ -40,6 +41,11 @@ func (h *WSHandler) ServeHTTP(w stdhttp.ResponseWriter, r *stdhttp.Request) {
 	client := core.NewClient(utils.NewID(), "")
 	h.hub.RegisterClient(client)
 	defer h.hub.UnregisterClient(client)
+
+	h.log.Info().
+		Str("client_id", client.ID).
+		Str("remote", remote).
+		Msg("ws connected")
 
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
@@ -73,11 +79,22 @@ func (h *WSHandler) ServeHTTP(w stdhttp.ResponseWriter, r *stdhttp.Request) {
 				status = websocket.StatusInternalError
 			}
 			reason = err.Error()
-			h.log.Warn().Err(err).Msg("ws connection closed with error")
+			h.log.Warn().
+				Err(err).
+				Str("client_id", client.ID).
+				Str("remote", remote).
+				Int("status", int(status)).
+				Msg("ws connection closed with error")
 		}
 	}
 
 	conn.Close(status, reason)
+	h.log.Info().
+		Str("client_id", client.ID).
+		Str("remote", remote).
+		Int("status", int(status)).
+		Str("reason", reason).
+		Msg("ws disconnected")
 }
 
 func (h *WSHandler) readLoop(ctx context.Context, conn *websocket.Conn, client *core.Client) error {
@@ -94,6 +111,11 @@ func (h *WSHandler) readLoop(ctx context.Context, conn *websocket.Conn, client *
 			return err
 		}
 		if protoErr != nil {
+			h.log.Warn().
+				Str("client_id", client.ID).
+				Str("code", protoErr.Code).
+				Str("msg", protoErr.Msg).
+				Msg("protocol error")
 			if writeErr := wsjson.Write(ctx, conn, proto.Outbound{
 				Type:  "error",
 				Error: protoErr,
@@ -103,6 +125,11 @@ func (h *WSHandler) readLoop(ctx context.Context, conn *websocket.Conn, client *
 			continue
 		}
 		if cmd != nil {
+			h.log.Debug().
+				Str("client_id", client.ID).
+				Str("kind", commandKindString(cmd.Kind)).
+				Str("room", cmd.Room).
+				Msg("inbound command")
 			client.Commands <- cmd
 		}
 	}
@@ -115,12 +142,32 @@ func (h *WSHandler) writeLoop(ctx context.Context, conn *websocket.Conn, client 
 			if !ok {
 				return nil
 			}
-			if err := wsjson.Write(ctx, conn, outboundFromEvent(event)); err != nil {
+			outbound := outboundFromEvent(event)
+			h.log.Debug().
+				Str("client_id", client.ID).
+				Str("event", outbound.Event).
+				Str("type", outbound.Type).
+				Str("room", event.Room).
+				Msg("outbound event")
+			if err := wsjson.Write(ctx, conn, outbound); err != nil {
 				h.log.Error().Err(err).Str("client_id", client.ID).Msg("write ws event")
 				return err
 			}
 		case <-ctx.Done():
 			return ctx.Err()
 		}
+	}
+}
+
+func commandKindString(kind core.CommandKind) string {
+	switch kind {
+	case core.CommandJoinRoom:
+		return "join"
+	case core.CommandLeaveRoom:
+		return "leave"
+	case core.CommandSendRoomMessage:
+		return "msg"
+	default:
+		return "unknown"
 	}
 }
