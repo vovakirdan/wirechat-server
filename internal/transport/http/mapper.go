@@ -6,7 +6,7 @@ import (
 
 	"github.com/vovakirdan/wirechat-server/internal/core"
 	"github.com/vovakirdan/wirechat-server/internal/proto"
-	"github.com/vovakirdan/wirechat-server/pkg/utils"
+	"github.com/vovakirdan/wirechat-server/internal/utils"
 )
 
 func inboundToCommand(client *core.Client, inbound proto.Inbound) (*core.Command, error) {

@@ -37,7 +37,7 @@ func Load(logger *zerolog.Logger, explicitPath string) (Config, string, error) {
 
 	if err := v.ReadInConfig(); err != nil {
 		var notFound viper.ConfigFileNotFoundError
-		if errors.As(err, &notFound) {
+		if errors.As(err, &notFound) || errors.Is(err, os.ErrNotExist) {
 			if writeErr := writeDefaultConfig(configPath, cfg); writeErr != nil && logger != nil {
 				logger.Warn().Err(writeErr).Str("path", configPath).Msg("failed to write default config")
 			} else if logger != nil {

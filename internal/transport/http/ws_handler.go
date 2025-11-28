@@ -9,7 +9,7 @@ import (
 	"github.com/rs/zerolog"
 	"github.com/vovakirdan/wirechat-server/internal/core"
 	"github.com/vovakirdan/wirechat-server/internal/proto"
-	"github.com/vovakirdan/wirechat-server/pkg/utils"
+	"github.com/vovakirdan/wirechat-server/internal/utils"
 	"nhooyr.io/websocket"
 	"nhooyr.io/websocket/wsjson"
 )

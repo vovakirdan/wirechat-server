@@ -63,10 +63,10 @@ func run(cmd *cobra.Command, flags serverFlags, cfg config.Config) error {
 	zerolog.DefaultContextLogger = logger
 
 	loadedCfg, cfgPath, err := config.Load(logger, flags.configPath)
+	cfg = loadedCfg
 	if err != nil {
 		logger.Warn().Err(err).Msg("failed to load config, using defaults where possible")
 	}
-	cfg = loadedCfg
 
 	// CLI flags override config if explicitly set.
 	if cmd.Flags().Changed("addr") {
