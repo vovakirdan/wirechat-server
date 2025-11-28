@@ -1,6 +1,9 @@
 package core
 
-import "context"
+import (
+	"context"
+	"time"
+)
 
 // Hub coordinates connected clients and message broadcasts.
 type Hub struct {
@@ -26,6 +29,7 @@ func (h *Hub) Run(ctx context.Context) {
 		select {
 		case client := <-h.register:
 			h.clients[client] = struct{}{}
+			go h.consumeCommands(ctx, client)
 		case client := <-h.unregister:
 			h.removeClient(client)
 		case event := <-h.broadcast:
@@ -50,6 +54,40 @@ func (h *Hub) UnregisterClient(client *Client) {
 // Broadcast enqueues an event to all connected clients.
 func (h *Hub) Broadcast(event Event) {
 	h.broadcast <- event
+}
+
+func (h *Hub) consumeCommands(ctx context.Context, client *Client) {
+	for {
+		select {
+		case cmd, ok := <-client.Commands:
+			if !ok {
+				h.UnregisterClient(client)
+				return
+			}
+			h.handleCommand(client, cmd)
+		case <-ctx.Done():
+			return
+		}
+	}
+}
+
+func (h *Hub) handleCommand(client *Client, cmd Command) {
+	switch cmd.Kind {
+	case CommandSendMessage:
+		msg := cmd.Message
+		if msg.CreatedAt.IsZero() {
+			msg.CreatedAt = time.Now()
+		}
+		if msg.From == "" {
+			msg.From = client.Name
+		}
+		h.Broadcast(Event{
+			Kind:    EventMessage,
+			Message: msg,
+		})
+	default:
+		// Unknown command kinds are ignored for now.
+	}
 }
 
 func (h *Hub) broadcastToAll(event Event) {

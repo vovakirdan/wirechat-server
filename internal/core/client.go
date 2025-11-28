@@ -10,6 +10,9 @@ type Client struct {
 
 // NewClient constructs a client with initialized channels.
 func NewClient(id, name string) *Client {
+	if name == "" {
+		name = id
+	}
 	return &Client{
 		ID:       id,
 		Name:     name,
