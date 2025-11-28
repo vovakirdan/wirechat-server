@@ -1,6 +1,7 @@
 package config
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -35,14 +36,17 @@ func Load(logger *zerolog.Logger, explicitPath string) (Config, string, error) {
 	v.SetConfigFile(configPath)
 
 	if err := v.ReadInConfig(); err != nil {
-		if _, ok := err.(viper.ConfigFileNotFoundError); ok {
+		var notFound viper.ConfigFileNotFoundError
+		if errors.As(err, &notFound) {
 			if writeErr := writeDefaultConfig(configPath, cfg); writeErr != nil && logger != nil {
 				logger.Warn().Err(writeErr).Str("path", configPath).Msg("failed to write default config")
 			} else if logger != nil {
 				logger.Info().Str("path", configPath).Msg("created default config")
 			}
 			// try reading again in case it was just written
-			_ = v.ReadInConfig()
+			if readErr := v.ReadInConfig(); readErr != nil && logger != nil {
+				logger.Warn().Err(readErr).Str("path", configPath).Msg("failed to read config after writing default")
+			}
 		} else {
 			return cfg, configPath, fmt.Errorf("read config: %w", err)
 		}
@@ -81,5 +85,5 @@ func writeDefaultConfig(path string, cfg Config) error {
 	if err != nil {
 		return err
 	}
-	return os.WriteFile(path, data, 0o644)
+	return os.WriteFile(path, data, 0o600)
 }

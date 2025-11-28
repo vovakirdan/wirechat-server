@@ -45,3 +45,7 @@ coverage.out
 
 # Ignore Go cache (optional as often global)
 pkg/
+
+*.yaml
+*.yml
+!config.example.yaml
