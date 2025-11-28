@@ -81,8 +81,8 @@ func run() error {
 		}
 		fmt.Println()
 
-		if outbound.Err != "" {
-			fmt.Printf("Error: %s\n", outbound.Err)
+		if outbound.Error != nil {
+			fmt.Printf("Error: code=%s msg=%s\n", outbound.Error.Code, outbound.Error.Msg)
 		}
 
 		raw, err := json.Marshal(outbound.Data)

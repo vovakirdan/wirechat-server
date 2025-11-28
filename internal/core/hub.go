@@ -109,10 +109,20 @@ func (h *coreHub) handleCommand(client *Client, cmd *Command) {
 
 func (h *coreHub) joinRoom(client *Client, roomName string) {
 	if roomName == "" {
+		client.Events <- &Event{
+			Kind:  EventError,
+			Room:  roomName,
+			Error: coreError(ErrCodeBadRequest, ErrBadRequest.Error()),
+		}
 		return
 	}
 	room := h.ensureRoom(roomName)
 	if !room.AddClient(client) {
+		client.Events <- &Event{
+			Kind:  EventError,
+			Room:  roomName,
+			Error: coreError(ErrCodeAlreadyJoined, ErrAlreadyJoined.Error()),
+		}
 		return
 	}
 	client.Rooms[roomName] = struct{}{}
@@ -126,9 +136,19 @@ func (h *coreHub) joinRoom(client *Client, roomName string) {
 func (h *coreHub) leaveRoom(client *Client, roomName string) {
 	room, ok := h.rooms[roomName]
 	if !ok {
+		client.Events <- &Event{
+			Kind:  EventError,
+			Room:  roomName,
+			Error: coreError(ErrCodeRoomNotFound, ErrRoomNotFound.Error()),
+		}
 		return
 	}
 	if !room.RemoveClient(client) {
+		client.Events <- &Event{
+			Kind:  EventError,
+			Room:  roomName,
+			Error: coreError(ErrCodeNotInRoom, ErrNotInRoom.Error()),
+		}
 		return
 	}
 	delete(client.Rooms, roomName)
@@ -144,9 +164,19 @@ func (h *coreHub) leaveRoom(client *Client, roomName string) {
 
 func (h *coreHub) sendRoomMessage(client *Client, cmd *Command) {
 	if cmd.Room == "" {
+		client.Events <- &Event{
+			Kind:  EventError,
+			Room:  cmd.Room,
+			Error: coreError(ErrCodeBadRequest, ErrBadRequest.Error()),
+		}
 		return
 	}
 	if _, ok := client.Rooms[cmd.Room]; !ok {
+		client.Events <- &Event{
+			Kind:  EventError,
+			Room:  cmd.Room,
+			Error: coreError(ErrCodeNotInRoom, ErrNotInRoom.Error()),
+		}
 		return
 	}
 

@@ -29,7 +29,7 @@ type Outbound struct {
 	Type  string `json:"type"`
 	Event string `json:"event,omitempty"`
 	Data  any    `json:"data,omitempty"`
-	Err   string `json:"error,omitempty"`
+	Error *Error `json:"error,omitempty"`
 }
 
 // EventMessage is emitted to all clients for now (rooms later).
@@ -50,4 +50,10 @@ type EventUserJoined struct {
 type EventUserLeft struct {
 	Room string `json:"room"`
 	User string `json:"user"`
+}
+
+// Error describes a protocol-level error response.
+type Error struct {
+	Code string `json:"code"`
+	Msg  string `json:"msg"`
 }

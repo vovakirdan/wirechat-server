@@ -10,6 +10,8 @@ const (
 	EventUserJoined
 	// EventUserLeft notifies clients about a user leaving a room.
 	EventUserLeft
+	// EventError notifies clients about a domain error.
+	EventError
 )
 
 // Event is sent to clients to describe what happened in the system.
@@ -18,4 +20,5 @@ type Event struct {
 	Room    string
 	User    string
 	Message Message
+	Error   *CoreError
 }

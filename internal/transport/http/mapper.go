@@ -9,39 +9,48 @@ import (
 	"github.com/vovakirdan/wirechat-server/internal/utils"
 )
 
-func inboundToCommand(client *core.Client, inbound proto.Inbound) (*core.Command, error) {
+func inboundToCommand(client *core.Client, inbound proto.Inbound) (*core.Command, *proto.Error, error) {
 	switch inbound.Type {
 	case "hello":
 		var hello proto.HelloData
 		if err := json.Unmarshal(inbound.Data, &hello); err != nil {
-			return nil, err
+			return nil, nil, err
 		}
 		if hello.User != "" {
 			client.Name = hello.User
 		}
-		return nil, nil
+		return nil, nil, nil
 	case "join":
 		var join proto.JoinData
 		if err := json.Unmarshal(inbound.Data, &join); err != nil {
-			return nil, err
+			return nil, nil, err
+		}
+		if join.Room == "" {
+			return nil, &proto.Error{Code: core.ErrCodeBadRequest, Msg: "room is required"}, nil
 		}
 		return &core.Command{
 			Kind: core.CommandJoinRoom,
 			Room: join.Room,
-		}, nil
+		}, nil, nil
 	case "leave":
 		var leave proto.JoinData
 		if err := json.Unmarshal(inbound.Data, &leave); err != nil {
-			return nil, err
+			return nil, nil, err
+		}
+		if leave.Room == "" {
+			return nil, &proto.Error{Code: core.ErrCodeBadRequest, Msg: "room is required"}, nil
 		}
 		return &core.Command{
 			Kind: core.CommandLeaveRoom,
 			Room: leave.Room,
-		}, nil
+		}, nil, nil
 	case "msg":
 		var msg proto.MsgData
 		if err := json.Unmarshal(inbound.Data, &msg); err != nil {
-			return nil, err
+			return nil, nil, err
+		}
+		if msg.Room == "" {
+			return nil, &proto.Error{Code: core.ErrCodeBadRequest, Msg: "room is required"}, nil
 		}
 		return &core.Command{
 			Kind: core.CommandSendRoomMessage,
@@ -53,10 +62,9 @@ func inboundToCommand(client *core.Client, inbound proto.Inbound) (*core.Command
 				Text:      msg.Text,
 				CreatedAt: time.Now(),
 			},
-		}, nil
+		}, nil, nil
 	default:
-		// Unknown message types are ignored for now.
-		return nil, nil
+		return nil, &proto.Error{Code: "invalid_message", Msg: "unknown message type"}, nil
 	}
 }
 
@@ -90,6 +98,14 @@ func outboundFromEvent(event *core.Event) proto.Outbound {
 				Room: event.Room,
 				User: event.User,
 			},
+		}
+	case core.EventError:
+		if event.Error == nil {
+			return proto.Outbound{Type: "error", Error: &proto.Error{Code: "unknown", Msg: "unknown error"}}
+		}
+		return proto.Outbound{
+			Type:  "error",
+			Error: &proto.Error{Code: event.Error.Code, Msg: event.Error.Message},
 		}
 	default:
 		return proto.Outbound{Type: "event"}

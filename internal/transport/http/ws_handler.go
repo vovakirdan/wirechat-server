@@ -88,10 +88,19 @@ func (h *WSHandler) readLoop(ctx context.Context, conn *websocket.Conn, client *
 			return err
 		}
 
-		cmd, err := inboundToCommand(client, inbound)
+		cmd, protoErr, err := inboundToCommand(client, inbound)
 		if err != nil {
 			h.log.Warn().Err(err).Str("client_id", client.ID).Msg("failed to map inbound")
 			return err
+		}
+		if protoErr != nil {
+			if writeErr := wsjson.Write(ctx, conn, proto.Outbound{
+				Type:  "error",
+				Error: protoErr,
+			}); writeErr != nil {
+				return writeErr
+			}
+			continue
 		}
 		if cmd != nil {
 			client.Commands <- cmd
