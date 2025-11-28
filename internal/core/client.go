@@ -6,6 +6,7 @@ type Client struct {
 	Name     string
 	Commands chan Command
 	Events   chan Event
+	Rooms    map[string]struct{}
 }
 
 // NewClient constructs a client with initialized channels.
@@ -18,5 +19,6 @@ func NewClient(id, name string) *Client {
 		Name:     name,
 		Commands: make(chan Command, 8),
 		Events:   make(chan Event, 8),
+		Rooms:    make(map[string]struct{}),
 	}
 }

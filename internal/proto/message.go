@@ -13,6 +13,11 @@ type HelloData struct {
 	User string `json:"user"`
 }
 
+// JoinData requests to join a specific room.
+type JoinData struct {
+	Room string `json:"room"`
+}
+
 // MsgData is a chat message from the client.
 type MsgData struct {
 	Room string `json:"room"`
@@ -21,9 +26,10 @@ type MsgData struct {
 
 // Outbound is the envelope for messages sent to the client.
 type Outbound struct {
-	Type string `json:"type"`
-	Data any    `json:"data,omitempty"`
-	Err  string `json:"error,omitempty"`
+	Type  string `json:"type"`
+	Event string `json:"event,omitempty"`
+	Data  any    `json:"data,omitempty"`
+	Err   string `json:"error,omitempty"`
 }
 
 // EventMessage is emitted to all clients for now (rooms later).
@@ -32,4 +38,16 @@ type EventMessage struct {
 	User string `json:"user"`
 	Text string `json:"text"`
 	Ts   int64  `json:"ts"`
+}
+
+// EventUserJoined notifies that a user joined a room.
+type EventUserJoined struct {
+	Room string `json:"room"`
+	User string `json:"user"`
+}
+
+// EventUserLeft notifies that a user left a room.
+type EventUserLeft struct {
+	Room string `json:"room"`
+	User string `json:"user"`
 }

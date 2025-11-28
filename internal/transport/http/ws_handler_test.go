@@ -72,38 +72,68 @@ func TestWebSocketHelloAndMessage(t *testing.T) {
 
 	sendHello := func(conn *websocket.Conn, user string) {
 		payload, _ := json.Marshal(proto.HelloData{User: user})
-		_ = wsjson.Write(ctx, conn, proto.Inbound{Type: "hello", Data: payload})
+		if err := wsjson.Write(ctx, conn, proto.Inbound{Type: "hello", Data: payload}); err != nil {
+			t.Fatalf("send hello: %v", err)
+		}
+	}
+
+	sendJoin := func(conn *websocket.Conn, room string) {
+		payload, _ := json.Marshal(proto.JoinData{Room: room})
+		if err := wsjson.Write(ctx, conn, proto.Inbound{Type: "join", Data: payload}); err != nil {
+			t.Fatalf("send join: %v", err)
+		}
 	}
 
 	sendMsg := func(conn *websocket.Conn, room, text string) {
 		payload, _ := json.Marshal(proto.MsgData{Room: room, Text: text})
-		_ = wsjson.Write(ctx, conn, proto.Inbound{Type: "msg", Data: payload})
+		if err := wsjson.Write(ctx, conn, proto.Inbound{Type: "msg", Data: payload}); err != nil {
+			t.Fatalf("send msg: %v", err)
+		}
 	}
 
 	sendHello(connA, "alice")
 	sendHello(connB, "bob")
+	sendJoin(connA, "general")
+	sendJoin(connB, "general")
+
+	waitFor := func(conn *websocket.Conn, expectEvent string) proto.Outbound {
+		for {
+			var outbound proto.Outbound
+			if err := wsjson.Read(ctx, conn, &outbound); err != nil {
+				t.Fatalf("read outbound: %v", err)
+			}
+			if outbound.Type != "event" || outbound.Event != expectEvent {
+				continue
+			}
+			return outbound
+		}
+	}
+
+	// Ensure B's join processed before sending messages.
+	joinOutbound := waitFor(connB, "user_joined")
+	joinData, err := json.Marshal(joinOutbound.Data)
+	if err != nil {
+		t.Fatalf("marshal join outbound: %v", err)
+	}
+	var joinEvent proto.EventUserJoined
+	if err := json.Unmarshal(joinData, &joinEvent); err != nil {
+		t.Fatalf("unmarshal join event: %v", err)
+	}
+	if joinEvent.User != "bob" || joinEvent.Room != "general" {
+		t.Fatalf("unexpected join event: %+v", joinEvent)
+	}
 
 	sendMsg(connA, "general", "hi there")
 
-	var outbound struct {
-		Type string          `json:"type"`
-		Data json.RawMessage `json:"data"`
-		Err  string          `json:"error,omitempty"`
+	msgOutbound := waitFor(connB, "message")
+	msgData, err := json.Marshal(msgOutbound.Data)
+	if err != nil {
+		t.Fatalf("marshal message outbound: %v", err)
 	}
-
-	if err := wsjson.Read(ctx, connB, &outbound); err != nil {
-		t.Fatalf("read outbound: %v", err)
-	}
-
-	if outbound.Type != "event" {
-		t.Fatalf("unexpected outbound type: %s", outbound.Type)
-	}
-
 	var event proto.EventMessage
-	if err := json.Unmarshal(outbound.Data, &event); err != nil {
+	if err := json.Unmarshal(msgData, &event); err != nil {
 		t.Fatalf("unmarshal event data: %v", err)
 	}
-
 	if event.User != "alice" || event.Text != "hi there" || event.Room != "general" {
 		t.Fatalf("unexpected event payload: %+v", event)
 	}

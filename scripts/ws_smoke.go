@@ -39,20 +39,28 @@ func main() {
 	helloPayload, _ := json.Marshal(proto.HelloData{User: *user})
 	mustSend(proto.Inbound{Type: "hello", Data: helloPayload})
 
+	joinPayload, _ := json.Marshal(proto.JoinData{Room: *room})
+	mustSend(proto.Inbound{Type: "join", Data: joinPayload})
+
 	msgPayload, _ := json.Marshal(proto.MsgData{Room: *room, Text: *text})
 	mustSend(proto.Inbound{Type: "msg", Data: msgPayload})
 
 	var outbound struct {
-		Type string          `json:"type"`
-		Data json.RawMessage `json:"data"`
-		Err  string          `json:"error,omitempty"`
+		Type  string          `json:"type"`
+		Event string          `json:"event"`
+		Data  json.RawMessage `json:"data"`
+		Err   string          `json:"error,omitempty"`
 	}
 
 	if err := wsjson.Read(ctx, conn, &outbound); err != nil {
 		log.Fatalf("read: %v", err)
 	}
 
-	fmt.Printf("Received outbound: type=%s\n", outbound.Type)
+	fmt.Printf("Received outbound: type=%s", outbound.Type)
+	if outbound.Event != "" {
+		fmt.Printf(" event=%s", outbound.Event)
+	}
+	fmt.Println()
 	if outbound.Err != "" {
 		fmt.Printf("Error: %s\n", outbound.Err)
 	}

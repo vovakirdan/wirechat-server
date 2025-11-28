@@ -88,13 +88,32 @@ func (h *WSHandler) readLoop(ctx context.Context, conn *websocket.Conn, client *
 			if hello.User != "" {
 				client.Name = hello.User
 			}
+		case "join":
+			var join proto.JoinData
+			if err := json.Unmarshal(inbound.Data, &join); err != nil {
+				return err
+			}
+			client.Commands <- core.Command{
+				Kind: core.CommandJoinRoom,
+				Room: join.Room,
+			}
+		case "leave":
+			var leave proto.JoinData
+			if err := json.Unmarshal(inbound.Data, &leave); err != nil {
+				return err
+			}
+			client.Commands <- core.Command{
+				Kind: core.CommandLeaveRoom,
+				Room: leave.Room,
+			}
 		case "msg":
 			var msg proto.MsgData
 			if err := json.Unmarshal(inbound.Data, &msg); err != nil {
 				return err
 			}
 			client.Commands <- core.Command{
-				Kind: core.CommandSendMessage,
+				Kind: core.CommandSendRoomMessage,
+				Room: msg.Room,
 				Message: core.Message{
 					ID:        utils.NewID(),
 					Room:      msg.Room,
@@ -127,14 +146,33 @@ func (h *WSHandler) writeLoop(ctx context.Context, conn *websocket.Conn, client 
 
 func eventToOutbound(event core.Event) proto.Outbound {
 	switch event.Kind {
-	case core.EventMessage:
+	case core.EventRoomMessage:
 		return proto.Outbound{
-			Type: "event",
+			Type:  "event",
+			Event: "message",
 			Data: proto.EventMessage{
 				Room: event.Message.Room,
 				User: event.Message.From,
 				Text: event.Message.Text,
 				Ts:   event.Message.CreatedAt.Unix(),
+			},
+		}
+	case core.EventUserJoined:
+		return proto.Outbound{
+			Type:  "event",
+			Event: "user_joined",
+			Data: proto.EventUserJoined{
+				Room: event.Room,
+				User: event.User,
+			},
+		}
+	case core.EventUserLeft:
+		return proto.Outbound{
+			Type:  "event",
+			Event: "user_left",
+			Data: proto.EventUserLeft{
+				Room: event.Room,
+				User: event.User,
 			},
 		}
 	default:
