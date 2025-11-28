@@ -1,0 +1,8 @@
+# HTTP listen address
+addr: ":8080"
+
+# Maximum time to read request headers
+read_header_timeout: 5s
+
+# Graceful shutdown timeout
+shutdown_timeout: 5s

@@ -20,6 +20,7 @@ type serverFlags struct {
 	readHeaderTimeout time.Duration
 	shutdownTimeout   time.Duration
 	logLevel          string
+	configPath        string
 }
 
 func main() {
@@ -35,7 +36,7 @@ func main() {
 		Use:   "wirechat-server",
 		Short: "WireChat server",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return run(cmd.Context(), flags, cfg)
+			return run(cmd, flags, cfg)
 		},
 	}
 
@@ -43,6 +44,7 @@ func main() {
 	rootCmd.Flags().DurationVar(&flags.readHeaderTimeout, "read-header-timeout", flags.readHeaderTimeout, "HTTP read header timeout")
 	rootCmd.Flags().DurationVar(&flags.shutdownTimeout, "shutdown-timeout", flags.shutdownTimeout, "graceful shutdown timeout")
 	rootCmd.Flags().StringVar(&flags.logLevel, "log-level", flags.logLevel, "log level: debug|info|warn|error")
+	rootCmd.Flags().StringVar(&flags.configPath, "config", "", "path to config file (optional)")
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	rootCmd.SetContext(ctx)
@@ -54,17 +56,32 @@ func main() {
 	stop()
 }
 
-func run(ctx context.Context, flags serverFlags, cfg config.Config) error {
-	cfg.Addr = flags.addr
-	cfg.ReadHeaderTimeout = flags.readHeaderTimeout
-	cfg.ShutdownTimeout = flags.shutdownTimeout
+func run(cmd *cobra.Command, flags serverFlags, cfg config.Config) error {
+	ctx := cmd.Context()
 
 	logger := intlog.New(flags.logLevel)
 	zerolog.DefaultContextLogger = logger
 
+	loadedCfg, cfgPath, err := config.Load(logger, flags.configPath)
+	if err != nil {
+		logger.Warn().Err(err).Msg("failed to load config, using defaults where possible")
+	}
+	cfg = loadedCfg
+
+	// CLI flags override config if explicitly set.
+	if cmd.Flags().Changed("addr") {
+		cfg.Addr = flags.addr
+	}
+	if cmd.Flags().Changed("read-header-timeout") {
+		cfg.ReadHeaderTimeout = flags.readHeaderTimeout
+	}
+	if cmd.Flags().Changed("shutdown-timeout") {
+		cfg.ShutdownTimeout = flags.shutdownTimeout
+	}
+
 	application := app.New(cfg, logger)
 
-	logger.Info().Str("addr", cfg.Addr).Msg("starting wirechat server")
+	logger.Info().Str("addr", cfg.Addr).Str("config", cfgPath).Msg("starting wirechat server")
 	if err := application.Run(ctx); err != nil {
 		logger.Error().Err(err).Msg("server exited with error")
 		return err
