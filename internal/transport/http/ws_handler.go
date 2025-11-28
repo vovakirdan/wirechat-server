@@ -14,8 +14,8 @@ import (
 	"github.com/vovakirdan/wirechat-server/internal/core"
 	"github.com/vovakirdan/wirechat-server/internal/proto"
 	"github.com/vovakirdan/wirechat-server/internal/utils"
-	"nhooyr.io/websocket"
-	"nhooyr.io/websocket/wsjson"
+	"github.com/coder/websocket"
+	"github.com/coder/websocket/wsjson"
 )
 
 // WSHandler upgrades HTTP connections and bridges them to core.Client.

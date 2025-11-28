@@ -12,8 +12,8 @@ import (
 	"github.com/vovakirdan/wirechat-server/internal/config"
 	"github.com/vovakirdan/wirechat-server/internal/core"
 	"github.com/vovakirdan/wirechat-server/internal/proto"
-	"nhooyr.io/websocket"
-	"nhooyr.io/websocket/wsjson"
+	"github.com/coder/websocket"
+	"github.com/coder/websocket/wsjson"
 )
 
 func TestProtocolVersionMismatch(t *testing.T) {

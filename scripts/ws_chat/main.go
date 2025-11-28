@@ -14,8 +14,8 @@ import (
 	"syscall"
 
 	"github.com/vovakirdan/wirechat-server/internal/proto"
-	"nhooyr.io/websocket"
-	"nhooyr.io/websocket/wsjson"
+	"github.com/coder/websocket"
+	"github.com/coder/websocket/wsjson"
 )
 
 func main() {
