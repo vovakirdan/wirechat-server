@@ -1,4 +1,4 @@
-.PHONY: all test build lint
+.PHONY: all test build lint fmt run bench ci race docker
 
 GO ?= go
 
@@ -15,8 +15,20 @@ all: build
 build:
 	$(GO) build -o bin/wirechat-server cmd/server/main.go
 
+run:
+	$(GO) run ./cmd/server
+
 test:
 	$(GO) test ./...
+
+race:
+	$(GO) test -race ./...
+
+bench:
+	$(GO) test -bench=. ./...
+
+fmt:
+	gofmt -w cmd internal scripts
 
 $(GOLANGCI_LINT):
 	@echo ">> Installing golangci-lint $(GOLANGCI_LINT_VERSION)"
@@ -25,3 +37,8 @@ $(GOLANGCI_LINT):
 lint: $(GOLANGCI_LINT)
 	@echo ">> Running linters"
 	$(GOLANGCI_LINT) run --config .golangci.yaml
+
+ci: fmt lint test
+
+docker:
+	docker build -t wirechat-server:latest .

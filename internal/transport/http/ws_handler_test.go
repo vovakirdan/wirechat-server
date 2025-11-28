@@ -194,8 +194,8 @@ func TestWebSocketMessageTooLarge(t *testing.T) {
 	defer conn.Close(websocket.StatusNormalClosure, "done")
 
 	payload, _ := json.Marshal(proto.HelloData{User: "big"})
-	if err := wsjson.Write(ctx, conn, proto.Inbound{Type: "hello", Data: payload}); err != nil {
-		t.Fatalf("send hello: %v", err)
+	if writeErr := wsjson.Write(ctx, conn, proto.Inbound{Type: "hello", Data: payload}); writeErr != nil {
+		t.Fatalf("send hello: %v", writeErr)
 	}
 
 	largeMsg := proto.MsgData{Room: "general", Text: strings.Repeat("a", 1024)}
@@ -228,8 +228,8 @@ func TestServerShutdownClosesConnections(t *testing.T) {
 	defer conn.Close(websocket.StatusNormalClosure, "done")
 
 	payload, _ := json.Marshal(proto.HelloData{User: "alice"})
-	if err := wsjson.Write(ctx, conn, proto.Inbound{Type: "hello", Data: payload}); err != nil {
-		t.Fatalf("send hello: %v", err)
+	if writeErr := wsjson.Write(ctx, conn, proto.Inbound{Type: "hello", Data: payload}); writeErr != nil {
+		t.Fatalf("send hello: %v", writeErr)
 	}
 
 	// trigger shutdown
