@@ -209,6 +209,15 @@ func isExpectedClose(err error) bool {
 }
 
 func (h *WSHandler) writeLoop(ctx context.Context, conn *websocket.Conn, client *core.Client) error {
+	// Setup ping ticker if ping interval is configured
+	var pingTicker *time.Ticker
+	var pingCh <-chan time.Time
+	if h.config.PingInterval > 0 {
+		pingTicker = time.NewTicker(h.config.PingInterval)
+		defer pingTicker.Stop()
+		pingCh = pingTicker.C
+	}
+
 	for {
 		select {
 		case event, ok := <-client.Events:
@@ -224,6 +233,12 @@ func (h *WSHandler) writeLoop(ctx context.Context, conn *websocket.Conn, client 
 				Msg("outbound event")
 			if err := wsjson.Write(ctx, conn, outbound); err != nil {
 				h.log.Error().Err(err).Str("client_id", client.ID).Msg("write ws event")
+				return err
+			}
+		case <-pingCh:
+			// Send WebSocket ping to keep connection alive
+			if err := conn.Ping(ctx); err != nil {
+				h.log.Debug().Err(err).Str("client_id", client.ID).Msg("ping failed")
 				return err
 			}
 		case <-ctx.Done():
