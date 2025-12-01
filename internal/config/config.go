@@ -28,7 +28,7 @@ func Default() Config {
 		RateLimitJoinPerMin: 60,
 		RateLimitMsgPerMin:  300,
 		PingInterval:        30 * time.Second,
-		ClientIdleTimeout:   60 * time.Second,
+		ClientIdleTimeout:   90 * time.Second, // 3x ping interval - buffer for ping/pong cycles
 		JWTRequired:         false,
 	}
 }

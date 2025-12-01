@@ -118,17 +118,20 @@ func (h *WSHandler) readLoop(ctx context.Context, conn *websocket.Conn, client *
 
 	for {
 		var inbound proto.Inbound
+		// Use context deadline for idle timeout if configured
+		// Note: This doesn't account for ping/pong activity, only JSON messages
+		// But since we ping every 30s and timeout is 90s, there's buffer time
 		if h.config.ClientIdleTimeout > 0 {
-			readCtx, cancelRead := context.WithDeadline(ctx, time.Now().Add(h.config.ClientIdleTimeout))
-			if err := wsjson.Read(readCtx, conn, &inbound); err != nil {
-				cancelRead()
+			readCtx, cancelRead := context.WithTimeout(ctx, h.config.ClientIdleTimeout)
+			err := wsjson.Read(readCtx, conn, &inbound)
+			cancelRead()
+			if err != nil {
 				if isExpectedClose(err) {
 					return nil
 				}
 				h.log.Warn().Err(err).Str("client_id", client.ID).Msg("read ws inbound")
 				return err
 			}
-			cancelRead()
 		} else {
 			if err := wsjson.Read(ctx, conn, &inbound); err != nil {
 				if isExpectedClose(err) {
