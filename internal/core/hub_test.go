@@ -13,8 +13,8 @@ func TestHubJoinBroadcastAndLeave(t *testing.T) {
 	hub := NewHub()
 	go hub.Run(ctx)
 
-	alice := NewClient("a", "alice")
-	bob := NewClient("b", "bob")
+	alice := NewClient("a", "alice", 0, false)
+	bob := NewClient("b", "bob", 0, false)
 
 	hub.RegisterClient(alice)
 	hub.RegisterClient(bob)
@@ -57,7 +57,7 @@ func TestHubDoubleJoinProducesError(t *testing.T) {
 	hub := NewHub()
 	go hub.Run(ctx)
 
-	alice := NewClient("a", "alice")
+	alice := NewClient("a", "alice", 0, false)
 	hub.RegisterClient(alice)
 
 	alice.Commands <- &Command{Kind: CommandJoinRoom, Room: "general"}
@@ -76,7 +76,7 @@ func TestHubSendWithoutJoinProducesError(t *testing.T) {
 	hub := NewHub()
 	go hub.Run(ctx)
 
-	alice := NewClient("a", "alice")
+	alice := NewClient("a", "alice", 0, false)
 	hub.RegisterClient(alice)
 
 	alice.Commands <- &Command{
@@ -98,7 +98,7 @@ func TestHubLeaveUnknownRoomError(t *testing.T) {
 	hub := NewHub()
 	go hub.Run(ctx)
 
-	alice := NewClient("a", "alice")
+	alice := NewClient("a", "alice", 0, false)
 	hub.RegisterClient(alice)
 
 	alice.Commands <- &Command{Kind: CommandLeaveRoom, Room: "ghost"}

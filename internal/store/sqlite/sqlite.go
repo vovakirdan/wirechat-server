@@ -35,6 +35,35 @@ func New(dbPath string) (*SQLiteStore, error) {
 	return &SQLiteStore{db: db}, nil
 }
 
+// NewWithSetup creates a new SQLite store and runs a setup function.
+// Useful for tests to apply schema without migrations.
+func NewWithSetup(dbPath string, setup func(*sql.DB) error) (*SQLiteStore, error) {
+	db, err := sql.Open("sqlite3", dbPath+"?_journal_mode=WAL&_busy_timeout=5000")
+	if err != nil {
+		return nil, fmt.Errorf("open sqlite: %w", err)
+	}
+
+	// Set connection pool limits before setup
+	db.SetMaxOpenConns(1)
+	db.SetMaxIdleConns(1)
+
+	// Run setup function (e.g., apply schema)
+	if setup != nil {
+		if err := setup(db); err != nil {
+			db.Close()
+			return nil, fmt.Errorf("setup: %w", err)
+		}
+	}
+
+	// Test connection
+	if err := db.Ping(); err != nil {
+		db.Close()
+		return nil, fmt.Errorf("ping sqlite: %w", err)
+	}
+
+	return &SQLiteStore{db: db}, nil
+}
+
 // Close closes the database connection.
 func (s *SQLiteStore) Close() error {
 	return s.db.Close()
@@ -409,7 +438,7 @@ func (s *SQLiteStore) ListMessages(ctx context.Context, roomID int64, limit int,
 	}
 
 	// Reverse to get chronological order
-	for i := 0; i < len(messages)/2; i++ {
+	for i := range len(messages) / 2 {
 		messages[i], messages[len(messages)-1-i] = messages[len(messages)-1-i], messages[i]
 	}
 

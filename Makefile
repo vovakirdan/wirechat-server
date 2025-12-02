@@ -21,7 +21,7 @@ run:
 	$(GO) run ./cmd/server
 
 test:
-	$(GO) test ./...
+	$(GO) test ./... -timeout 30s
 
 race:
 	$(GO) test -race ./...

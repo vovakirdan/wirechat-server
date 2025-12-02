@@ -9,16 +9,23 @@ import (
 	"testing"
 	"time"
 
+	"github.com/coder/websocket"
+	"github.com/coder/websocket/wsjson"
 	"github.com/rs/zerolog"
 	"github.com/vovakirdan/wirechat-server/internal/config"
 	"github.com/vovakirdan/wirechat-server/internal/core"
 	"github.com/vovakirdan/wirechat-server/internal/proto"
-	"github.com/coder/websocket"
-	"github.com/coder/websocket/wsjson"
 )
 
 func startTestServer(t *testing.T) (*httptest.Server, context.CancelFunc) {
 	t.Helper()
+
+	// Create test store with schema
+	store := createTestStore(t)
+	t.Cleanup(func() { store.Close() })
+
+	// Create auth service
+	authService := createTestAuthService(t, store, "test-secret")
 
 	hub := core.NewHub()
 	ctx, cancel := context.WithCancel(context.Background())
@@ -33,7 +40,7 @@ func startTestServer(t *testing.T) (*httptest.Server, context.CancelFunc) {
 		MaxMessageBytes:   1 << 20,
 	}
 
-	server := NewServer(hub, &cfg, &disabledLogger)
+	server := NewServer(hub, authService, &cfg, &disabledLogger)
 
 	ts := httptest.NewServer(server.Handler)
 	t.Cleanup(ts.Close)
@@ -44,13 +51,20 @@ func startTestServer(t *testing.T) (*httptest.Server, context.CancelFunc) {
 func startTestServerWithConfig(t *testing.T, cfg config.Config) (*httptest.Server, context.CancelFunc) {
 	t.Helper()
 
+	// Create test store with schema
+	store := createTestStore(t)
+	t.Cleanup(func() { store.Close() })
+
+	// Create auth service
+	authService := createTestAuthService(t, store, cfg.JWTSecret)
+
 	hub := core.NewHub()
 	ctx, cancel := context.WithCancel(context.Background())
 	go hub.Run(ctx)
 
 	disabledLogger := zerolog.New(io.Discard)
 
-	server := NewServer(hub, &cfg, &disabledLogger)
+	server := NewServer(hub, authService, &cfg, &disabledLogger)
 
 	ts := httptest.NewServer(server.Handler)
 	t.Cleanup(ts.Close)

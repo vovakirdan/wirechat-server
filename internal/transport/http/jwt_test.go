@@ -8,17 +8,25 @@ import (
 	"testing"
 	"time"
 
+	"github.com/coder/websocket"
+	"github.com/coder/websocket/wsjson"
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/rs/zerolog"
+	"github.com/vovakirdan/wirechat-server/internal/auth"
 	"github.com/vovakirdan/wirechat-server/internal/config"
 	"github.com/vovakirdan/wirechat-server/internal/core"
 	"github.com/vovakirdan/wirechat-server/internal/proto"
-	"github.com/coder/websocket"
-	"github.com/coder/websocket/wsjson"
 )
 
 func startJWTTestServer(t *testing.T, cfg config.Config) (*httptest.Server, context.CancelFunc) {
 	t.Helper()
+
+	// Create test store with schema
+	store := createTestStore(t)
+	t.Cleanup(func() { store.Close() })
+
+	// Create auth service
+	authService := createTestAuthService(t, store, cfg.JWTSecret)
 
 	hub := core.NewHub()
 	ctx, cancel := context.WithCancel(context.Background())
@@ -26,7 +34,7 @@ func startJWTTestServer(t *testing.T, cfg config.Config) (*httptest.Server, cont
 
 	disabledLogger := zerolog.New(nil)
 
-	server := NewServer(hub, &cfg, &disabledLogger)
+	server := NewServer(hub, authService, &cfg, &disabledLogger)
 
 	ts := httptest.NewServer(server.Handler)
 	t.Cleanup(ts.Close)
@@ -35,18 +43,21 @@ func startJWTTestServer(t *testing.T, cfg config.Config) (*httptest.Server, cont
 }
 
 func makeJWT(secret, aud, iss, sub, name string, ttl time.Duration) (string, error) {
-	claims := jwt.MapClaims{
-		"sub": sub,
-		"exp": time.Now().Add(ttl).Unix(),
+	claims := auth.Claims{
+		UserID:   1, // Test user ID
+		Username: name,
+		IsGuest:  false,
+		RegisteredClaims: jwt.RegisteredClaims{
+			Subject:   sub,
+			ExpiresAt: jwt.NewNumericDate(time.Now().Add(ttl)),
+			IssuedAt:  jwt.NewNumericDate(time.Now()),
+		},
 	}
 	if aud != "" {
-		claims["aud"] = aud
+		claims.Audience = jwt.ClaimStrings{aud}
 	}
 	if iss != "" {
-		claims["iss"] = iss
-	}
-	if name != "" {
-		claims["name"] = name
+		claims.Issuer = iss
 	}
 
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)

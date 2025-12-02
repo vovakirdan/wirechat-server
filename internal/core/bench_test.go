@@ -12,13 +12,13 @@ func benchmarkRoomBroadcast(b *testing.B, recipients int) {
 	hub := NewHub()
 	go hub.Run(ctx)
 
-	sender := NewClient("sender", "sender")
+	sender := NewClient("sender", "sender", 0, false)
 	hub.RegisterClient(sender)
 	sender.Commands <- &Command{Kind: CommandJoinRoom, Room: "bench"}
 
 	clients := make([]*Client, 0, recipients)
 	for i := range recipients {
-		c := NewClient("c"+string(rune('a'+i)), "client")
+		c := NewClient("c"+string(rune('a'+i)), "client", 0, false)
 		hub.RegisterClient(c)
 		c.Commands <- &Command{Kind: CommandJoinRoom, Room: "bench"}
 		clients = append(clients, c)

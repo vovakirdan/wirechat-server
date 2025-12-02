@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/rs/zerolog"
+	"github.com/vovakirdan/wirechat-server/internal/auth"
 	"github.com/vovakirdan/wirechat-server/internal/config"
 	"github.com/vovakirdan/wirechat-server/internal/core"
 	"github.com/vovakirdan/wirechat-server/internal/store"
@@ -33,8 +34,19 @@ func New(cfg *config.Config, logger *zerolog.Logger) (*App, error) {
 
 	logger.Info().Str("db_path", cfg.DatabasePath).Msg("database initialized")
 
+	// Create JWT config
+	jwtConfig := &auth.JWTConfig{
+		Secret:   []byte(cfg.JWTSecret),
+		Issuer:   cfg.JWTIssuer,
+		Audience: cfg.JWTAudience,
+		TTL:      24 * time.Hour, // 24 hour token expiry
+	}
+
+	// Create auth service
+	authService := auth.NewService(st, jwtConfig)
+
 	hub := core.NewHub()
-	server := transporthttp.NewServer(hub, cfg, logger)
+	server := transporthttp.NewServer(hub, authService, cfg, logger)
 
 	return &App{
 		server:          server,

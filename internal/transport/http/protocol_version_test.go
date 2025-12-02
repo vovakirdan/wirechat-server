@@ -8,24 +8,31 @@ import (
 	"testing"
 	"time"
 
+	"github.com/coder/websocket"
+	"github.com/coder/websocket/wsjson"
 	"github.com/rs/zerolog"
 	"github.com/vovakirdan/wirechat-server/internal/config"
 	"github.com/vovakirdan/wirechat-server/internal/core"
 	"github.com/vovakirdan/wirechat-server/internal/proto"
-	"github.com/coder/websocket"
-	"github.com/coder/websocket/wsjson"
 )
 
 func TestProtocolVersionMismatch(t *testing.T) {
+	// Create test store with schema
+	store := createTestStore(t)
+	defer store.Close()
+
+	// Create auth service
+	cfg := config.Default()
+	authService := createTestAuthService(t, store, cfg.JWTSecret)
+
 	hub := core.NewHub()
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	go hub.Run(ctx)
 
 	disabledLogger := zerolog.New(nil)
-	cfg := config.Default()
 
-	server := NewServer(hub, &cfg, &disabledLogger)
+	server := NewServer(hub, authService, &cfg, &disabledLogger)
 	ts := httptest.NewServer(server.Handler)
 	defer ts.Close()
 

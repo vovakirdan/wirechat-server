@@ -30,7 +30,10 @@ func Default() Config {
 		RateLimitJoinPerMin: 60,
 		RateLimitMsgPerMin:  300,
 		PingInterval:        30 * time.Second,
-		ClientIdleTimeout:   90 * time.Second, // 3x ping interval - buffer for ping/pong cycles
+		ClientIdleTimeout:   90 * time.Second,                  // 3x ping interval - buffer for ping/pong cycles
+		JWTSecret:           "dev-secret-change-in-production", // IMPORTANT: Change in production!
+		JWTAudience:         "wirechat",
+		JWTIssuer:           "wirechat-server",
 		JWTRequired:         false,
 	}
 }

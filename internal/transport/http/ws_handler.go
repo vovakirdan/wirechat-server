@@ -10,8 +10,8 @@ import (
 
 	"github.com/coder/websocket"
 	"github.com/coder/websocket/wsjson"
-	"github.com/golang-jwt/jwt/v5"
 	"github.com/rs/zerolog"
+	"github.com/vovakirdan/wirechat-server/internal/auth"
 	"github.com/vovakirdan/wirechat-server/internal/config"
 	"github.com/vovakirdan/wirechat-server/internal/core"
 	"github.com/vovakirdan/wirechat-server/internal/proto"
@@ -20,14 +20,20 @@ import (
 
 // WSHandler upgrades HTTP connections and bridges them to core.Client.
 type WSHandler struct {
-	hub    core.Hub
-	log    *zerolog.Logger
-	config *config.Config
+	hub         core.Hub
+	authService *auth.Service
+	log         *zerolog.Logger
+	config      *config.Config
 }
 
 // NewWSHandler builds a new WebSocket handler.
-func NewWSHandler(hub core.Hub, cfg *config.Config, logger *zerolog.Logger) stdhttp.Handler {
-	return &WSHandler{hub: hub, log: logger, config: cfg}
+func NewWSHandler(hub core.Hub, authService *auth.Service, cfg *config.Config, logger *zerolog.Logger) stdhttp.Handler {
+	return &WSHandler{
+		hub:         hub,
+		authService: authService,
+		log:         logger,
+		config:      cfg,
+	}
 }
 
 func (h *WSHandler) ServeHTTP(w stdhttp.ResponseWriter, r *stdhttp.Request) {
@@ -47,7 +53,8 @@ func (h *WSHandler) ServeHTTP(w stdhttp.ResponseWriter, r *stdhttp.Request) {
 		conn.SetReadLimit(h.config.MaxMessageBytes)
 	}
 
-	client := core.NewClient(utils.NewID(), "")
+	// Create client without user info - will be set in handleHello
+	client := core.NewClient(utils.NewID(), "", 0, false)
 	h.hub.RegisterClient(client)
 	defer h.hub.UnregisterClient(client)
 
@@ -273,89 +280,43 @@ func (h *WSHandler) handleHello(client *core.Client, inbound proto.Inbound) (*pr
 		return &proto.Error{Code: "unsupported_version", Msg: "unsupported protocol version"}, nil
 	}
 
-	if h.config.JWTRequired || h.config.JWTSecret != "" {
-		if hello.Token == "" {
-			return &proto.Error{Code: "unauthorized", Msg: "token required"}, nil
-		}
-		claims, err := h.validateJWT(hello.Token)
+	// Try to validate JWT token
+	if hello.Token != "" {
+		claims, err := h.authService.ValidateToken(hello.Token)
 		if err != nil {
-			return &proto.Error{Code: "unauthorized", Msg: "invalid token"}, nil
+			h.log.Warn().Err(err).Msg("invalid jwt token")
+			if h.config.JWTRequired {
+				return &proto.Error{Code: "unauthorized", Msg: "invalid token"}, nil
+			}
+			// If JWT not required, fall through to guest mode
+		} else {
+			// Valid token - set user info from claims
+			client.UserID = claims.UserID
+			client.Name = claims.Username
+			client.IsGuest = claims.IsGuest
+			h.log.Info().
+				Str("client_id", client.ID).
+				Int64("user_id", client.UserID).
+				Str("username", client.Name).
+				Bool("is_guest", client.IsGuest).
+				Msg("authenticated via jwt")
+			return nil, nil
 		}
-		if name, ok := claims["name"].(string); ok && name != "" {
-			client.Name = name
-		} else if sub, ok := claims["sub"].(string); ok && sub != "" {
-			client.Name = sub
-		}
-	} else if hello.User != "" {
-		client.Name = hello.User
+	} else if h.config.JWTRequired {
+		return &proto.Error{Code: "unauthorized", Msg: "token required"}, nil
 	}
+
+	// Guest mode: use provided username or generate one
+	if hello.User != "" {
+		client.Name = hello.User
+	} else {
+		client.Name = "guest-" + client.ID[:8]
+	}
+	client.IsGuest = true
+	h.log.Info().
+		Str("client_id", client.ID).
+		Str("username", client.Name).
+		Msg("connected as guest")
 
 	return nil, nil
-}
-
-func (h *WSHandler) validateJWT(token string) (jwt.MapClaims, error) {
-	if h.config.JWTSecret == "" {
-		return nil, errors.New("no jwt secret configured")
-	}
-	parsed, err := jwt.Parse(token, func(t *jwt.Token) (interface{}, error) {
-		if _, ok := t.Method.(*jwt.SigningMethodHMAC); !ok {
-			return nil, errors.New("unexpected signing method")
-		}
-		return []byte(h.config.JWTSecret), nil
-	})
-	if err != nil {
-		return nil, err
-	}
-	claims, ok := parsed.Claims.(jwt.MapClaims)
-	if !ok || !parsed.Valid {
-		return nil, errors.New("invalid claims")
-	}
-	if h.config.JWTAudience != "" && !verifyAudience(claims, h.config.JWTAudience) {
-		return nil, errors.New("invalid audience")
-	}
-	if h.config.JWTIssuer != "" && !verifyIssuer(claims, h.config.JWTIssuer) {
-		return nil, errors.New("invalid issuer")
-	}
-	return claims, nil
-}
-
-func verifyAudience(claims jwt.MapClaims, expected string) bool {
-	if expected == "" {
-		return true
-	}
-	val, ok := claims["aud"]
-	if !ok {
-		return false
-	}
-	switch v := val.(type) {
-	case string:
-		return v == expected
-	case []interface{}:
-		for _, item := range v {
-			if s, ok := item.(string); ok && s == expected {
-				return true
-			}
-		}
-	case []string:
-		for _, s := range v {
-			if s == expected {
-				return true
-			}
-		}
-	}
-	return false
-}
-
-func verifyIssuer(claims jwt.MapClaims, expected string) bool {
-	if expected == "" {
-		return true
-	}
-	val, ok := claims["iss"]
-	if !ok {
-		return false
-	}
-	if s, ok := val.(string); ok {
-		return s == expected
-	}
-	return false
 }
