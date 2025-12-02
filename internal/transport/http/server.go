@@ -34,6 +34,10 @@ func NewServer(hub core.Hub, authService *auth.Service, st store.Store, cfg *con
 	authMiddleware := AuthMiddleware(authService, logger)
 	api.POST("/rooms", authMiddleware, roomHandlers.CreateRoom)
 	api.GET("/rooms", authMiddleware, roomHandlers.ListRooms)
+	api.POST("/rooms/:id/join", authMiddleware, roomHandlers.JoinRoom)
+	api.DELETE("/rooms/:id/leave", authMiddleware, roomHandlers.LeaveRoom)
+	api.POST("/rooms/:id/members", authMiddleware, roomHandlers.AddMember)
+	api.DELETE("/rooms/:id/members/:userId", authMiddleware, roomHandlers.RemoveMember)
 
 	// Main mux - combines Gin for API and direct handler for WebSocket
 	mux := stdhttp.NewServeMux()

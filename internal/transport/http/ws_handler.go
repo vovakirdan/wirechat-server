@@ -196,7 +196,7 @@ func (h *WSHandler) readLoop(ctx context.Context, conn *websocket.Conn, client *
 			continue
 		}
 		if cmd != nil {
-			// For join commands, check room type (Iteration 3.1: only public rooms allowed)
+			// For join commands, check room type and membership (Iteration 3.2: public + private rooms)
 			if cmd.Kind == core.CommandJoinRoom {
 				room, err := h.store.GetRoomByName(ctx, cmd.Room)
 				if err != nil {
@@ -210,13 +210,58 @@ func (h *WSHandler) readLoop(ctx context.Context, conn *websocket.Conn, client *
 					}
 					continue
 				}
-				// Check if room is public
-				if room.Type != store.RoomTypePublic {
+
+				// Check room access based on type
+				switch room.Type {
+				case store.RoomTypePublic:
+					// Public room: anyone can join
+					h.log.Debug().
+						Str("client_id", client.ID).
+						Str("room", cmd.Room).
+						Int64("room_id", room.ID).
+						Msg("allowing join to public room")
+				case store.RoomTypePrivate:
+					// Private room: check membership
+					isMember, err := h.store.IsMember(ctx, client.UserID, room.ID)
+					if err != nil {
+						h.log.Error().Err(err).Int64("user_id", client.UserID).Int64("room_id", room.ID).Msg("failed to check membership")
+						protoErr = &proto.Error{Code: "internal_error", Msg: "internal server error"}
+						if writeErr := wsjson.Write(ctx, conn, proto.Outbound{
+							Type:  "error",
+							Error: protoErr,
+						}); writeErr != nil {
+							return writeErr
+						}
+						continue
+					}
+					if !isMember {
+						h.log.Warn().
+							Str("client_id", client.ID).
+							Int64("user_id", client.UserID).
+							Str("room", cmd.Room).
+							Int64("room_id", room.ID).
+							Msg("access denied: not a member of private room")
+						protoErr = &proto.Error{Code: "access_denied", Msg: "access denied"}
+						if writeErr := wsjson.Write(ctx, conn, proto.Outbound{
+							Type:  "error",
+							Error: protoErr,
+						}); writeErr != nil {
+							return writeErr
+						}
+						continue
+					}
+					h.log.Debug().
+						Str("client_id", client.ID).
+						Int64("user_id", client.UserID).
+						Str("room", cmd.Room).
+						Msg("allowing join to private room (user is member)")
+				default:
+					// Other room types (e.g., direct) - deny for now
 					h.log.Warn().
 						Str("client_id", client.ID).
 						Str("room", cmd.Room).
 						Str("room_type", string(room.Type)).
-						Msg("access denied: not a public room")
+						Msg("access denied: unsupported room type")
 					protoErr = &proto.Error{Code: "access_denied", Msg: "access denied"}
 					if writeErr := wsjson.Write(ctx, conn, proto.Outbound{
 						Type:  "error",
