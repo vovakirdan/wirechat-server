@@ -9,10 +9,11 @@ import (
 	"github.com/vovakirdan/wirechat-server/internal/auth"
 	"github.com/vovakirdan/wirechat-server/internal/config"
 	"github.com/vovakirdan/wirechat-server/internal/core"
+	"github.com/vovakirdan/wirechat-server/internal/store"
 )
 
 // NewServer builds an HTTP server with REST API and WebSocket routes.
-func NewServer(hub core.Hub, authService *auth.Service, cfg *config.Config, logger *zerolog.Logger) *stdhttp.Server {
+func NewServer(hub core.Hub, authService *auth.Service, st store.Store, cfg *config.Config, logger *zerolog.Logger) *stdhttp.Server {
 	// Set Gin mode based on log level
 	gin.SetMode(gin.ReleaseMode)
 
@@ -28,6 +29,12 @@ func NewServer(hub core.Hub, authService *auth.Service, cfg *config.Config, logg
 	api.POST("/login", apiHandlers.Login)
 	api.POST("/guest", apiHandlers.GuestLogin)
 
+	// Room endpoints (require authentication)
+	roomHandlers := NewRoomHandlers(st, logger)
+	authMiddleware := AuthMiddleware(authService, logger)
+	api.POST("/rooms", authMiddleware, roomHandlers.CreateRoom)
+	api.GET("/rooms", authMiddleware, roomHandlers.ListRooms)
+
 	// Main mux - combines Gin for API and direct handler for WebSocket
 	mux := stdhttp.NewServeMux()
 
@@ -41,7 +48,7 @@ func NewServer(hub core.Hub, authService *auth.Service, cfg *config.Config, logg
 	})
 
 	// WebSocket endpoint - direct handler, no Gin wrapper
-	wsHandler := NewWSHandler(hub, authService, cfg, logger)
+	wsHandler := NewWSHandler(hub, authService, st, cfg, logger)
 	mux.Handle("/ws", wsHandler)
 
 	// API endpoints - handled by Gin

@@ -15,6 +15,7 @@ import (
 	"github.com/vovakirdan/wirechat-server/internal/config"
 	"github.com/vovakirdan/wirechat-server/internal/core"
 	"github.com/vovakirdan/wirechat-server/internal/proto"
+	"github.com/vovakirdan/wirechat-server/internal/store"
 	"github.com/vovakirdan/wirechat-server/internal/utils"
 )
 
@@ -22,15 +23,17 @@ import (
 type WSHandler struct {
 	hub         core.Hub
 	authService *auth.Service
+	store       store.Store
 	log         *zerolog.Logger
 	config      *config.Config
 }
 
 // NewWSHandler builds a new WebSocket handler.
-func NewWSHandler(hub core.Hub, authService *auth.Service, cfg *config.Config, logger *zerolog.Logger) stdhttp.Handler {
+func NewWSHandler(hub core.Hub, authService *auth.Service, st store.Store, cfg *config.Config, logger *zerolog.Logger) stdhttp.Handler {
 	return &WSHandler{
 		hub:         hub,
 		authService: authService,
+		store:       st,
 		log:         logger,
 		config:      cfg,
 	}
@@ -193,6 +196,38 @@ func (h *WSHandler) readLoop(ctx context.Context, conn *websocket.Conn, client *
 			continue
 		}
 		if cmd != nil {
+			// For join commands, check room type (Iteration 3.1: only public rooms allowed)
+			if cmd.Kind == core.CommandJoinRoom {
+				room, err := h.store.GetRoomByName(ctx, cmd.Room)
+				if err != nil {
+					h.log.Warn().Err(err).Str("room", cmd.Room).Msg("room not found")
+					protoErr = &proto.Error{Code: "room_not_found", Msg: "room does not exist"}
+					if writeErr := wsjson.Write(ctx, conn, proto.Outbound{
+						Type:  "error",
+						Error: protoErr,
+					}); writeErr != nil {
+						return writeErr
+					}
+					continue
+				}
+				// Check if room is public
+				if room.Type != store.RoomTypePublic {
+					h.log.Warn().
+						Str("client_id", client.ID).
+						Str("room", cmd.Room).
+						Str("room_type", string(room.Type)).
+						Msg("access denied: not a public room")
+					protoErr = &proto.Error{Code: "access_denied", Msg: "access denied"}
+					if writeErr := wsjson.Write(ctx, conn, proto.Outbound{
+						Type:  "error",
+						Error: protoErr,
+					}); writeErr != nil {
+						return writeErr
+					}
+					continue
+				}
+			}
+
 			h.log.Debug().
 				Str("client_id", client.ID).
 				Str("kind", commandKindString(cmd.Kind)).

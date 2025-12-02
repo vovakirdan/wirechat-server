@@ -46,7 +46,7 @@ func New(cfg *config.Config, logger *zerolog.Logger) (*App, error) {
 	authService := auth.NewService(st, jwtConfig)
 
 	hub := core.NewHub()
-	server := transporthttp.NewServer(hub, authService, cfg, logger)
+	server := transporthttp.NewServer(hub, authService, st, cfg, logger)
 
 	return &App{
 		server:          server,

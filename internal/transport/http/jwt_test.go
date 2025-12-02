@@ -34,7 +34,7 @@ func startJWTTestServer(t *testing.T, cfg config.Config) (*httptest.Server, cont
 
 	disabledLogger := zerolog.New(nil)
 
-	server := NewServer(hub, authService, &cfg, &disabledLogger)
+	server := NewServer(hub, authService, store, &cfg, &disabledLogger)
 
 	ts := httptest.NewServer(server.Handler)
 	t.Cleanup(ts.Close)
