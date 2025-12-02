@@ -135,6 +135,46 @@ func (h *coreHub) joinRoom(client *Client, roomName string) {
 		Room: roomName,
 		User: client.Name,
 	})
+
+	// Send message history to the joining client (optional, best-effort)
+	if h.store != nil {
+		ctx := context.Background()
+
+		// Try to get room from database
+		dbRoom, err := h.store.GetRoomByName(ctx, roomName)
+		if err == nil {
+			// Room exists in database, fetch last 20 messages
+			messages, err := h.store.ListMessages(ctx, dbRoom.ID, 20, nil)
+			if err == nil && len(messages) > 0 {
+				// Convert store.Message to core.Message
+				coreMessages := make([]Message, 0, len(messages))
+				for _, msg := range messages {
+					// Get username for the message
+					user, err := h.store.GetUserByID(ctx, msg.UserID)
+					username := "unknown"
+					if err == nil {
+						username = user.Username
+					}
+
+					coreMessages = append(coreMessages, Message{
+						ID:        msg.ID,
+						Room:      roomName,
+						From:      username,
+						Text:      msg.Body,
+						CreatedAt: msg.CreatedAt,
+					})
+				}
+
+				// Send history event to this client only
+				client.Events <- &Event{
+					Kind:     EventHistory,
+					Room:     roomName,
+					Messages: coreMessages,
+				}
+			}
+		}
+		// Ignore errors - history is optional, don't fail join if history fetch fails
+	}
 }
 
 func (h *coreHub) leaveRoom(client *Client, roomName string) {

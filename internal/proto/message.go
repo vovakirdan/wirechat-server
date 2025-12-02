@@ -67,6 +67,12 @@ type EventUserLeft struct {
 	User string `json:"user"`
 }
 
+// EventHistory delivers message history upon joining a room.
+type EventHistory struct {
+	Room     string         `json:"room"`
+	Messages []EventMessage `json:"messages"`
+}
+
 // Error describes a protocol-level error response.
 type Error struct {
 	Code string `json:"code"`

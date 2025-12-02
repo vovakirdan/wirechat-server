@@ -90,6 +90,26 @@ func outboundFromEvent(event *core.Event) proto.Outbound {
 				User: event.User,
 			},
 		}
+	case core.EventHistory:
+		// Convert core.Message slice to proto.EventMessage slice
+		messages := make([]proto.EventMessage, 0, len(event.Messages))
+		for _, msg := range event.Messages {
+			messages = append(messages, proto.EventMessage{
+				ID:   msg.ID,
+				Room: msg.Room,
+				User: msg.From,
+				Text: msg.Text,
+				TS:   msg.CreatedAt.Unix(),
+			})
+		}
+		return proto.Outbound{
+			Type:  "event",
+			Event: "history",
+			Data: proto.EventHistory{
+				Room:     event.Room,
+				Messages: messages,
+			},
+		}
 	case core.EventError:
 		if event.Error == nil {
 			return proto.Outbound{Type: "error", Error: &proto.Error{Code: "unknown", Msg: "unknown error"}}
