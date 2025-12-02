@@ -388,7 +388,8 @@ func TestWebSocketDirectRoomJoin(t *testing.T) {
 		Name string `json:"name"`
 		Type string `json:"type"`
 	}
-	if err := json.NewDecoder(resp.Body).Decode(&roomResp); err != nil {
+	err = json.NewDecoder(resp.Body).Decode(&roomResp)
+	if err != nil {
 		t.Fatalf("failed to decode room response: %v", err)
 	}
 
@@ -411,19 +412,22 @@ func TestWebSocketDirectRoomJoin(t *testing.T) {
 
 	// Send hello with user1 token
 	helloData1, _ := json.Marshal(proto.HelloData{User: "user1", Token: token1, Protocol: 1})
-	if err := wsjson.Write(wsCtx, conn1, proto.Inbound{Type: "hello", Data: helloData1}); err != nil {
+	err = wsjson.Write(wsCtx, conn1, proto.Inbound{Type: "hello", Data: helloData1})
+	if err != nil {
 		t.Fatalf("send hello user1: %v", err)
 	}
 
 	// Send join to direct room
 	joinData1, _ := json.Marshal(proto.JoinData{Room: roomName})
-	if err := wsjson.Write(wsCtx, conn1, proto.Inbound{Type: "join", Data: joinData1}); err != nil {
+	err = wsjson.Write(wsCtx, conn1, proto.Inbound{Type: "join", Data: joinData1})
+	if err != nil {
 		t.Fatalf("send join user1: %v", err)
 	}
 
 	// Read user_joined event
 	var outbound1 proto.Outbound
-	if err := wsjson.Read(wsCtx, conn1, &outbound1); err != nil {
+	err = wsjson.Read(wsCtx, conn1, &outbound1)
+	if err != nil {
 		t.Fatalf("read user1 join event: %v", err)
 	}
 
@@ -440,19 +444,22 @@ func TestWebSocketDirectRoomJoin(t *testing.T) {
 
 	// Send hello with user2 token
 	helloData2, _ := json.Marshal(proto.HelloData{User: "user2", Token: token2, Protocol: 1})
-	if err := wsjson.Write(wsCtx, conn2, proto.Inbound{Type: "hello", Data: helloData2}); err != nil {
+	err = wsjson.Write(wsCtx, conn2, proto.Inbound{Type: "hello", Data: helloData2})
+	if err != nil {
 		t.Fatalf("send hello user2: %v", err)
 	}
 
 	// Send join to direct room
 	joinData2, _ := json.Marshal(proto.JoinData{Room: roomName})
-	if err := wsjson.Write(wsCtx, conn2, proto.Inbound{Type: "join", Data: joinData2}); err != nil {
+	err = wsjson.Write(wsCtx, conn2, proto.Inbound{Type: "join", Data: joinData2})
+	if err != nil {
 		t.Fatalf("send join user2: %v", err)
 	}
 
 	// Read user_joined event for user2
 	var outbound2 proto.Outbound
-	if err := wsjson.Read(wsCtx, conn2, &outbound2); err != nil {
+	err = wsjson.Read(wsCtx, conn2, &outbound2)
+	if err != nil {
 		t.Fatalf("read user2 join event: %v", err)
 	}
 
@@ -462,7 +469,8 @@ func TestWebSocketDirectRoomJoin(t *testing.T) {
 
 	// Also read the user_joined event that user1 receives about user2
 	var outbound1b proto.Outbound
-	if err := wsjson.Read(wsCtx, conn1, &outbound1b); err != nil {
+	err = wsjson.Read(wsCtx, conn1, &outbound1b)
+	if err != nil {
 		t.Fatalf("read user2 join notification on user1: %v", err)
 	}
 
