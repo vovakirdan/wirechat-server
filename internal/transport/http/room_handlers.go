@@ -376,6 +376,22 @@ func (h *RoomHandlers) RemoveMember(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"message": "member removed successfully"})
 }
 
+// MessageResponse represents a message in API responses.
+type MessageResponse struct {
+	ID        int64  `json:"id"`
+	RoomID    int64  `json:"room_id"`
+	UserID    int64  `json:"user_id"`
+	User      string `json:"user,omitempty"` // Username, populated via JOIN
+	Body      string `json:"body"`
+	CreatedAt string `json:"created_at"`
+}
+
+// MessagesResponse represents the response for message history endpoint.
+type MessagesResponse struct {
+	Messages []MessageResponse `json:"messages"`
+	HasMore  bool              `json:"has_more"`
+}
+
 // CreateDirectRoomRequest represents the create direct room request body.
 type CreateDirectRoomRequest struct {
 	UserID int64 `json:"user_id" binding:"required"`
@@ -448,4 +464,75 @@ func (h *RoomHandlers) CreateDirectRoom(c *gin.Context) {
 		OwnerID:   room.OwnerID,
 		CreatedAt: room.CreatedAt.Format("2006-01-02T15:04:05Z07:00"),
 	})
+}
+
+// GetMessages retrieves message history for a room with cursor pagination.
+// GET /api/rooms/:id/messages?limit=50&before=123
+func (h *RoomHandlers) GetMessages(c *gin.Context) {
+	// Parse room ID from URL
+	roomID := c.Param("id")
+	var rid int64
+	if _, err := fmt.Sscanf(roomID, "%d", &rid); err != nil {
+		h.log.Debug().Str("room_id", roomID).Msg("invalid room id")
+		c.JSON(http.StatusBadRequest, ErrorResponse{Error: "invalid room id"})
+		return
+	}
+
+	// Parse query parameters
+	limit := 50 // default
+	if limitStr := c.Query("limit"); limitStr != "" {
+		var parsedLimit int
+		if _, err := fmt.Sscanf(limitStr, "%d", &parsedLimit); err == nil {
+			if parsedLimit > 0 && parsedLimit <= 100 {
+				limit = parsedLimit
+			} else if parsedLimit > 100 {
+				limit = 100 // cap at 100
+			}
+		}
+	}
+
+	var beforeID *int64
+	if beforeStr := c.Query("before"); beforeStr != "" {
+		var parsedBefore int64
+		if _, err := fmt.Sscanf(beforeStr, "%d", &parsedBefore); err == nil {
+			beforeID = &parsedBefore
+		}
+	}
+
+	// Fetch messages from store (limit + 1 to determine has_more)
+	messages, err := h.store.ListMessages(c.Request.Context(), rid, limit+1, beforeID)
+	if err != nil {
+		h.log.Error().Err(err).Int64("room_id", rid).Msg("failed to list messages")
+		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: "internal server error"})
+		return
+	}
+
+	// Determine if there are more messages
+	hasMore := len(messages) > limit
+	if hasMore {
+		messages = messages[:limit]
+	}
+
+	// Convert to response format
+	response := MessagesResponse{
+		Messages: make([]MessageResponse, 0, len(messages)),
+		HasMore:  hasMore,
+	}
+
+	for _, msg := range messages {
+		response.Messages = append(response.Messages, MessageResponse{
+			ID:        msg.ID,
+			RoomID:    msg.RoomID,
+			UserID:    msg.UserID,
+			Body:      msg.Body,
+			CreatedAt: msg.CreatedAt.Format("2006-01-02T15:04:05Z07:00"),
+		})
+	}
+
+	h.log.Debug().
+		Int64("room_id", rid).
+		Int("message_count", len(response.Messages)).
+		Bool("has_more", hasMore).
+		Msg("messages retrieved successfully")
+	c.JSON(http.StatusOK, response)
 }

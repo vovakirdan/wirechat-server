@@ -6,7 +6,6 @@ import (
 
 	"github.com/vovakirdan/wirechat-server/internal/core"
 	"github.com/vovakirdan/wirechat-server/internal/proto"
-	"github.com/vovakirdan/wirechat-server/internal/utils"
 )
 
 func inboundToCommand(client *core.Client, inbound proto.Inbound) (*core.Command, *proto.Error, error) {
@@ -47,7 +46,7 @@ func inboundToCommand(client *core.Client, inbound proto.Inbound) (*core.Command
 			Kind: core.CommandSendRoomMessage,
 			Room: msg.Room,
 			Message: core.Message{
-				ID:        utils.NewID(),
+				// ID will be set by hub after saving to DB
 				Room:      msg.Room,
 				From:      client.Name,
 				Text:      msg.Text,
@@ -66,6 +65,7 @@ func outboundFromEvent(event *core.Event) proto.Outbound {
 			Type:  "event",
 			Event: "message",
 			Data: proto.EventMessage{
+				ID:   event.Message.ID,
 				Room: event.Message.Room,
 				User: event.Message.From,
 				Text: event.Message.Text,

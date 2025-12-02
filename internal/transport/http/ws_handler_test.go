@@ -27,7 +27,7 @@ func startTestServer(t *testing.T) (*httptest.Server, context.CancelFunc) {
 	// Create auth service
 	authService := createTestAuthService(t, store, "test-secret")
 
-	hub := core.NewHub()
+	hub := core.NewHub(store)
 	ctx, cancel := context.WithCancel(context.Background())
 	go hub.Run(ctx)
 
@@ -58,7 +58,7 @@ func startTestServerWithConfig(t *testing.T, cfg config.Config) (*httptest.Serve
 	// Create auth service
 	authService := createTestAuthService(t, store, cfg.JWTSecret)
 
-	hub := core.NewHub()
+	hub := core.NewHub(store)
 	ctx, cancel := context.WithCancel(context.Background())
 	go hub.Run(ctx)
 

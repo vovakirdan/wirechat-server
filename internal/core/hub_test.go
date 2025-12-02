@@ -10,7 +10,7 @@ func TestHubJoinBroadcastAndLeave(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()
 
-	hub := NewHub()
+	hub := NewHub(nil) // No store needed for this test
 	go hub.Run(ctx)
 
 	alice := NewClient("a", "alice", 0, false)
@@ -54,7 +54,7 @@ func TestHubDoubleJoinProducesError(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()
 
-	hub := NewHub()
+	hub := NewHub(nil) // No store needed for this test
 	go hub.Run(ctx)
 
 	alice := NewClient("a", "alice", 0, false)
@@ -73,7 +73,7 @@ func TestHubSendWithoutJoinProducesError(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()
 
-	hub := NewHub()
+	hub := NewHub(nil) // No store needed for this test
 	go hub.Run(ctx)
 
 	alice := NewClient("a", "alice", 0, false)
@@ -95,7 +95,7 @@ func TestHubLeaveUnknownRoomError(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()
 
-	hub := NewHub()
+	hub := NewHub(nil) // No store needed for this test
 	go hub.Run(ctx)
 
 	alice := NewClient("a", "alice", 0, false)

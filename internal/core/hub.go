@@ -3,6 +3,8 @@ package core
 import (
 	"context"
 	"time"
+
+	"github.com/vovakirdan/wirechat-server/internal/store"
 )
 
 // Hub coordinates connected clients and message broadcasts.
@@ -18,6 +20,7 @@ type coreHub struct {
 	commands   chan clientCommand
 	clients    map[*Client]struct{}
 	rooms      map[string]*Room
+	store      store.Store
 }
 
 type clientCommand struct {
@@ -26,13 +29,14 @@ type clientCommand struct {
 }
 
 // NewHub creates a new chat hub instance.
-func NewHub() Hub {
+func NewHub(st store.Store) Hub {
 	return &coreHub{
 		register:   make(chan *Client, 16),
 		unregister: make(chan *Client, 16),
 		commands:   make(chan clientCommand, 64),
 		clients:    make(map[*Client]struct{}),
 		rooms:      make(map[string]*Room),
+		store:      st,
 	}
 }
 
@@ -188,6 +192,30 @@ func (h *coreHub) sendRoomMessage(client *Client, cmd *Command) {
 		msg.From = client.Name
 	}
 	msg.Room = cmd.Room
+
+	// Save to database if authenticated user and store is available
+	if !client.IsGuest && client.UserID > 0 && h.store != nil {
+		ctx := context.Background()
+
+		// Get room from database to obtain room ID
+		room, err := h.store.GetRoomByName(ctx, cmd.Room)
+		if err == nil {
+			// Room exists in database, save message
+			storeMsg := &store.Message{
+				RoomID:    room.ID,
+				UserID:    client.UserID,
+				Body:      msg.Text,
+				CreatedAt: msg.CreatedAt,
+			}
+
+			if err := h.store.SaveMessage(ctx, storeMsg); err == nil {
+				// Message saved successfully, use real ID from database
+				msg.ID = storeMsg.ID
+			}
+			// If save fails, continue with ID=0 (message will still be broadcast)
+		}
+		// If room not found in database, continue without saving (in-memory only room)
+	}
 
 	h.broadcastToRoom(cmd.Room, &Event{
 		Kind:    EventRoomMessage,

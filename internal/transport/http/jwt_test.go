@@ -28,7 +28,7 @@ func startJWTTestServer(t *testing.T, cfg config.Config) (*httptest.Server, cont
 	// Create auth service
 	authService := createTestAuthService(t, store, cfg.JWTSecret)
 
-	hub := core.NewHub()
+	hub := core.NewHub(store)
 	ctx, cancel := context.WithCancel(context.Background())
 	go hub.Run(ctx)
 

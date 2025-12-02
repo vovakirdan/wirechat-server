@@ -9,7 +9,7 @@ func benchmarkRoomBroadcast(b *testing.B, recipients int) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	hub := NewHub()
+	hub := NewHub(nil) // No store needed for benchmark
 	go hub.Run(ctx)
 
 	sender := NewClient("sender", "sender", 0, false)

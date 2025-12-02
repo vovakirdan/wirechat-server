@@ -48,6 +48,7 @@ type Outbound struct {
 
 // EventMessage is emitted to all clients for now (rooms later).
 type EventMessage struct {
+	ID   int64  `json:"id,omitempty"`
 	Room string `json:"room,omitempty"`
 	User string `json:"user"`
 	Text string `json:"text"`

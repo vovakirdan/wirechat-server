@@ -23,7 +23,7 @@ func TestCreateRoom(t *testing.T) {
 	// Create auth service
 	authService := createTestAuthService(t, testStore, "test-secret")
 
-	hub := core.NewHub()
+	hub := core.NewHub(testStore)
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	go hub.Run(ctx)
@@ -110,7 +110,7 @@ func TestListRooms(t *testing.T) {
 	// Create auth service
 	authService := createTestAuthService(t, testStore, "test-secret")
 
-	hub := core.NewHub()
+	hub := core.NewHub(testStore)
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	go hub.Run(ctx)
@@ -198,7 +198,7 @@ func TestCreateDirectRoom(t *testing.T) {
 	// Create auth service
 	authService := createTestAuthService(t, testStore, "test-secret")
 
-	hub := core.NewHub()
+	hub := core.NewHub(testStore)
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	go hub.Run(ctx)

@@ -25,7 +25,7 @@ func TestProtocolVersionMismatch(t *testing.T) {
 	cfg := config.Default()
 	authService := createTestAuthService(t, store, cfg.JWTSecret)
 
-	hub := core.NewHub()
+	hub := core.NewHub(store)
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	go hub.Run(ctx)
