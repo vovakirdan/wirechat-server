@@ -128,9 +128,11 @@ func (h *WSHandler) readLoop(ctx context.Context, conn *websocket.Conn, client *
 
 	for {
 		var inbound proto.Inbound
-		// Use context deadline for idle timeout if configured
-		// Note: This doesn't account for ping/pong activity, only JSON messages
-		// But since we ping every 30s and timeout is 90s, there's buffer time
+		// Use context timeout for idle detection if configured
+		// Note: coder/websocket automatically handles pong frames during Read operations.
+		// The timeout applies to receiving JSON messages. Since we send ping every PingInterval (30s),
+		// and ClientIdleTimeout is 90s (3x ping), there's sufficient buffer for detecting dead connections.
+		// If the connection is dead, Ping in writeLoop will fail and close the connection.
 		if h.config.ClientIdleTimeout > 0 {
 			readCtx, cancelRead := context.WithTimeout(ctx, h.config.ClientIdleTimeout)
 			err := wsjson.Read(readCtx, conn, &inbound)
@@ -220,8 +222,13 @@ func (h *WSHandler) readLoop(ctx context.Context, conn *websocket.Conn, client *
 						Str("room", cmd.Room).
 						Int64("room_id", room.ID).
 						Msg("allowing join to public room")
-				case store.RoomTypePrivate:
-					// Private room: check membership
+				case store.RoomTypePrivate, store.RoomTypeDirect:
+					// Private/Direct room: check membership
+					roomTypeStr := "private"
+					if room.Type == store.RoomTypeDirect {
+						roomTypeStr = "direct"
+					}
+
 					isMember, err := h.store.IsMember(ctx, client.UserID, room.ID)
 					if err != nil {
 						h.log.Error().Err(err).Int64("user_id", client.UserID).Int64("room_id", room.ID).Msg("failed to check membership")
@@ -240,7 +247,8 @@ func (h *WSHandler) readLoop(ctx context.Context, conn *websocket.Conn, client *
 							Int64("user_id", client.UserID).
 							Str("room", cmd.Room).
 							Int64("room_id", room.ID).
-							Msg("access denied: not a member of private room")
+							Str("room_type", roomTypeStr).
+							Msg("access denied: not a member of room")
 						protoErr = &proto.Error{Code: "access_denied", Msg: "access denied"}
 						if writeErr := wsjson.Write(ctx, conn, proto.Outbound{
 							Type:  "error",
@@ -254,9 +262,10 @@ func (h *WSHandler) readLoop(ctx context.Context, conn *websocket.Conn, client *
 						Str("client_id", client.ID).
 						Int64("user_id", client.UserID).
 						Str("room", cmd.Room).
-						Msg("allowing join to private room (user is member)")
+						Str("room_type", roomTypeStr).
+						Msg("allowing join to room (user is member)")
 				default:
-					// Other room types (e.g., direct) - deny for now
+					// Other unsupported room types - deny
 					h.log.Warn().
 						Str("client_id", client.ID).
 						Str("room", cmd.Room).
