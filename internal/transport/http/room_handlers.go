@@ -375,3 +375,77 @@ func (h *RoomHandlers) RemoveMember(c *gin.Context) {
 	h.log.Info().Int64("room_id", rid).Int64("user_id", targetUID).Int64("removed_by", currentUID).Msg("member removed from room")
 	c.JSON(http.StatusOK, gin.H{"message": "member removed successfully"})
 }
+
+// CreateDirectRoomRequest represents the create direct room request body.
+type CreateDirectRoomRequest struct {
+	UserID int64 `json:"user_id" binding:"required"`
+}
+
+// CreateDirectRoom handles creating or getting a direct message room between two users.
+// POST /api/rooms/direct
+func (h *RoomHandlers) CreateDirectRoom(c *gin.Context) {
+	// Get authenticated user from context
+	userID, exists := c.Get(ContextKeyUserID)
+	if !exists {
+		h.log.Error().Msg("user_id not found in context")
+		c.JSON(http.StatusUnauthorized, ErrorResponse{Error: "unauthorized"})
+		return
+	}
+
+	currentUID, ok := userID.(int64)
+	if !ok {
+		h.log.Error().Msg("invalid user_id type in context")
+		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: "internal server error"})
+		return
+	}
+
+	// Parse request body
+	var req CreateDirectRoomRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		h.log.Debug().Err(err).Msg("invalid create direct room request")
+		c.JSON(http.StatusBadRequest, ErrorResponse{Error: "invalid request body"})
+		return
+	}
+
+	// Can't create direct room with yourself
+	if req.UserID == currentUID {
+		h.log.Debug().Int64("user_id", currentUID).Msg("cannot create direct room with self")
+		c.JSON(http.StatusBadRequest, ErrorResponse{Error: "cannot create direct room with yourself"})
+		return
+	}
+
+	// Compute direct_key: dm:{minUserId}:{maxUserId}
+	var user1ID, user2ID int64
+	if currentUID < req.UserID {
+		user1ID = currentUID
+		user2ID = req.UserID
+	} else {
+		user1ID = req.UserID
+		user2ID = currentUID
+	}
+	directKey := fmt.Sprintf("dm:%d:%d", user1ID, user2ID)
+
+	// Create or get existing direct room
+	room, err := h.store.CreateDirectRoom(c.Request.Context(), directKey, user1ID, user2ID)
+	if err != nil {
+		h.log.Error().Err(err).Str("direct_key", directKey).Msg("failed to create direct room")
+		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: "internal server error"})
+		return
+	}
+
+	h.log.Info().
+		Int64("room_id", room.ID).
+		Str("room_name", room.Name).
+		Str("direct_key", directKey).
+		Int64("user1_id", user1ID).
+		Int64("user2_id", user2ID).
+		Msg("direct room created or retrieved")
+
+	c.JSON(http.StatusOK, RoomResponse{
+		ID:        room.ID,
+		Name:      room.Name,
+		Type:      string(room.Type),
+		OwnerID:   room.OwnerID,
+		CreatedAt: room.CreatedAt.Format("2006-01-02T15:04:05Z07:00"),
+	})
+}

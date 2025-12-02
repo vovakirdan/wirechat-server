@@ -30,9 +30,12 @@ func createTestStore(t *testing.T) store.Store {
 		name       TEXT NOT NULL UNIQUE,
 		type       TEXT NOT NULL DEFAULT 'public',
 		owner_id   INTEGER,
+		direct_key TEXT,
 		created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
 		FOREIGN KEY (owner_id) REFERENCES users(id)
 	);
+
+	CREATE UNIQUE INDEX idx_rooms_direct_key ON rooms(direct_key) WHERE direct_key IS NOT NULL;
 
 	CREATE TABLE room_members (
 		room_id    INTEGER NOT NULL,
@@ -47,7 +50,7 @@ func createTestStore(t *testing.T) store.Store {
 		id         INTEGER PRIMARY KEY AUTOINCREMENT,
 		room_id    INTEGER NOT NULL,
 		user_id    INTEGER NOT NULL,
-		text       TEXT NOT NULL,
+		body       TEXT NOT NULL,
 		created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
 		FOREIGN KEY (room_id) REFERENCES rooms(id),
 		FOREIGN KEY (user_id) REFERENCES users(id)

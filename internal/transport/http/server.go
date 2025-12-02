@@ -34,6 +34,7 @@ func NewServer(hub core.Hub, authService *auth.Service, st store.Store, cfg *con
 	authMiddleware := AuthMiddleware(authService, logger)
 	api.POST("/rooms", authMiddleware, roomHandlers.CreateRoom)
 	api.GET("/rooms", authMiddleware, roomHandlers.ListRooms)
+	api.POST("/rooms/direct", authMiddleware, roomHandlers.CreateDirectRoom)
 	api.POST("/rooms/:id/join", authMiddleware, roomHandlers.JoinRoom)
 	api.DELETE("/rooms/:id/leave", authMiddleware, roomHandlers.LeaveRoom)
 	api.POST("/rooms/:id/members", authMiddleware, roomHandlers.AddMember)

@@ -214,17 +214,19 @@ func (s *SQLiteStore) CreateRoom(ctx context.Context, name string, roomType stor
 // GetRoomByID retrieves a room by ID.
 func (s *SQLiteStore) GetRoomByID(ctx context.Context, id int64) (*store.Room, error) {
 	query := `
-		SELECT id, name, type, owner_id, created_at
+		SELECT id, name, type, owner_id, direct_key, created_at
 		FROM rooms
 		WHERE id = ?
 	`
 	var room store.Room
 	var ownerID sql.NullInt64
+	var directKey sql.NullString
 	err := s.db.QueryRowContext(ctx, query, id).Scan(
 		&room.ID,
 		&room.Name,
 		&room.Type,
 		&ownerID,
+		&directKey,
 		&room.CreatedAt,
 	)
 	if err != nil {
@@ -236,6 +238,9 @@ func (s *SQLiteStore) GetRoomByID(ctx context.Context, id int64) (*store.Room, e
 
 	if ownerID.Valid {
 		room.OwnerID = &ownerID.Int64
+	}
+	if directKey.Valid {
+		room.DirectKey = &directKey.String
 	}
 
 	return &room, nil
@@ -244,17 +249,19 @@ func (s *SQLiteStore) GetRoomByID(ctx context.Context, id int64) (*store.Room, e
 // GetRoomByName retrieves a room by name.
 func (s *SQLiteStore) GetRoomByName(ctx context.Context, name string) (*store.Room, error) {
 	query := `
-		SELECT id, name, type, owner_id, created_at
+		SELECT id, name, type, owner_id, direct_key, created_at
 		FROM rooms
 		WHERE name = ?
 	`
 	var room store.Room
 	var ownerID sql.NullInt64
+	var directKey sql.NullString
 	err := s.db.QueryRowContext(ctx, query, name).Scan(
 		&room.ID,
 		&room.Name,
 		&room.Type,
 		&ownerID,
+		&directKey,
 		&room.CreatedAt,
 	)
 	if err != nil {
@@ -267,6 +274,9 @@ func (s *SQLiteStore) GetRoomByName(ctx context.Context, name string) (*store.Ro
 	if ownerID.Valid {
 		room.OwnerID = &ownerID.Int64
 	}
+	if directKey.Valid {
+		room.DirectKey = &directKey.String
+	}
 
 	return &room, nil
 }
@@ -274,7 +284,7 @@ func (s *SQLiteStore) GetRoomByName(ctx context.Context, name string) (*store.Ro
 // ListRooms lists all accessible rooms for a user.
 func (s *SQLiteStore) ListRooms(ctx context.Context, userID int64) ([]*store.Room, error) {
 	query := `
-		SELECT DISTINCT r.id, r.name, r.type, r.owner_id, r.created_at
+		SELECT DISTINCT r.id, r.name, r.type, r.owner_id, r.direct_key, r.created_at
 		FROM rooms r
 		LEFT JOIN room_members rm ON r.id = rm.room_id
 		WHERE r.type = 'public'
@@ -292,16 +302,117 @@ func (s *SQLiteStore) ListRooms(ctx context.Context, userID int64) ([]*store.Roo
 	for rows.Next() {
 		var room store.Room
 		var ownerID sql.NullInt64
-		if err := rows.Scan(&room.ID, &room.Name, &room.Type, &ownerID, &room.CreatedAt); err != nil {
+		var directKey sql.NullString
+		if err := rows.Scan(&room.ID, &room.Name, &room.Type, &ownerID, &directKey, &room.CreatedAt); err != nil {
 			return nil, fmt.Errorf("scan room: %w", err)
 		}
 		if ownerID.Valid {
 			room.OwnerID = &ownerID.Int64
 		}
+		if directKey.Valid {
+			room.DirectKey = &directKey.String
+		}
 		rooms = append(rooms, &room)
 	}
 
 	return rooms, rows.Err()
+}
+
+// GetRoomByDirectKey retrieves a direct room by its direct_key.
+func (s *SQLiteStore) GetRoomByDirectKey(ctx context.Context, directKey string) (*store.Room, error) {
+	query := `
+		SELECT id, name, type, owner_id, direct_key, created_at
+		FROM rooms
+		WHERE direct_key = ?
+	`
+	var room store.Room
+	var ownerID sql.NullInt64
+	var directKeyNullable sql.NullString
+	err := s.db.QueryRowContext(ctx, query, directKey).Scan(
+		&room.ID,
+		&room.Name,
+		&room.Type,
+		&ownerID,
+		&directKeyNullable,
+		&room.CreatedAt,
+	)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, fmt.Errorf("room not found: %w", err)
+		}
+		return nil, fmt.Errorf("query room: %w", err)
+	}
+
+	if ownerID.Valid {
+		room.OwnerID = &ownerID.Int64
+	}
+	if directKeyNullable.Valid {
+		room.DirectKey = &directKeyNullable.String
+	}
+
+	return &room, nil
+}
+
+// CreateDirectRoom creates a direct message room between two users.
+// Handles deduplication via directKey and auto-adds both users as members.
+func (s *SQLiteStore) CreateDirectRoom(ctx context.Context, directKey string, user1ID, user2ID int64) (*store.Room, error) {
+	// Check if room already exists
+	room, err := s.GetRoomByDirectKey(ctx, directKey)
+	if err == nil {
+		// Room already exists, return it
+		return room, nil
+	}
+	// If error is not "not found", return the error
+	if !errors.Is(err, sql.ErrNoRows) {
+		return nil, fmt.Errorf("check existing room: %w", err)
+	}
+
+	// Begin transaction
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return nil, fmt.Errorf("begin transaction: %w", err)
+	}
+	defer func() {
+		_ = tx.Rollback() //nolint:errcheck // Rollback is called on defer, error is not critical here
+	}()
+
+	// Generate room name (dm-{user1ID}-{user2ID})
+	roomName := fmt.Sprintf("dm-%d-%d", user1ID, user2ID)
+
+	// Insert room
+	query := `
+		INSERT INTO rooms (name, type, owner_id, direct_key)
+		VALUES (?, 'direct', NULL, ?)
+	`
+	result, err := tx.ExecContext(ctx, query, roomName, directKey)
+	if err != nil {
+		return nil, fmt.Errorf("insert room: %w", err)
+	}
+
+	roomID, err := result.LastInsertId()
+	if err != nil {
+		return nil, fmt.Errorf("get last insert id: %w", err)
+	}
+
+	// Add both users as members
+	memberQuery := `
+		INSERT INTO room_members (user_id, room_id)
+		VALUES (?, ?)
+	`
+	if _, err := tx.ExecContext(ctx, memberQuery, user1ID, roomID); err != nil {
+		return nil, fmt.Errorf("add user1 to members: %w", err)
+	}
+	if _, err := tx.ExecContext(ctx, memberQuery, user2ID, roomID); err != nil {
+		return nil, fmt.Errorf("add user2 to members: %w", err)
+	}
+
+	// Commit transaction
+	if err := tx.Commit(); err != nil {
+		return nil, fmt.Errorf("commit transaction: %w", err)
+	}
+
+	// Return the created room
+	return s.GetRoomByID(ctx, roomID)
 }
 
 // AddMember adds a user to a room.

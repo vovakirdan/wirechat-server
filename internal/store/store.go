@@ -20,7 +20,8 @@ type Room struct {
 	ID        int64
 	Name      string
 	Type      RoomType
-	OwnerID   *int64 // nil for public rooms, set for private/direct
+	OwnerID   *int64  // nil for public rooms, set for private/direct
+	DirectKey *string // for direct rooms: "dm:{minUserId}:{maxUserId}"
 	CreatedAt time.Time
 }
 
@@ -73,11 +74,18 @@ type RoomStore interface {
 	// CreateRoom creates a new room.
 	CreateRoom(ctx context.Context, name string, roomType RoomType, ownerID *int64) (*Room, error)
 
+	// CreateDirectRoom creates a direct message room between two users.
+	// Handles deduplication via directKey and auto-adds both users as members.
+	CreateDirectRoom(ctx context.Context, directKey string, user1ID, user2ID int64) (*Room, error)
+
 	// GetRoomByID retrieves a room by ID.
 	GetRoomByID(ctx context.Context, id int64) (*Room, error)
 
 	// GetRoomByName retrieves a room by name.
 	GetRoomByName(ctx context.Context, name string) (*Room, error)
+
+	// GetRoomByDirectKey retrieves a direct room by its direct_key.
+	GetRoomByDirectKey(ctx context.Context, directKey string) (*Room, error)
 
 	// ListRooms lists all accessible rooms for a user.
 	ListRooms(ctx context.Context, userID int64) ([]*Room, error)
