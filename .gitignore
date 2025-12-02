@@ -31,6 +31,10 @@ go.work.sum
 # .idea/
 # .vscode/
 
+# Database
+*.db
+*.db-journal
+
 *.yaml
 *.yml
 !config.example.yaml

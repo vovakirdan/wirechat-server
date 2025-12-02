@@ -5,6 +5,7 @@ import "time"
 // Config holds server configuration values.
 type Config struct {
 	Addr                string        `mapstructure:"addr" yaml:"addr"`
+	DatabasePath        string        `mapstructure:"database_path" yaml:"database_path"`
 	ReadHeaderTimeout   time.Duration `mapstructure:"read_header_timeout" yaml:"read_header_timeout"`
 	ShutdownTimeout     time.Duration `mapstructure:"shutdown_timeout" yaml:"shutdown_timeout"`
 	MaxMessageBytes     int64         `mapstructure:"max_message_bytes" yaml:"max_message_bytes"`
@@ -22,6 +23,7 @@ type Config struct {
 func Default() Config {
 	return Config{
 		Addr:                ":8080",
+		DatabasePath:        "data/wirechat.db",
 		ReadHeaderTimeout:   5 * time.Second,
 		ShutdownTimeout:     5 * time.Second,
 		MaxMessageBytes:     1 << 20, // 1MB
@@ -40,6 +42,9 @@ func (c *Config) UpdateFrom(other *Config) {
 	}
 	if other.Addr != "" {
 		c.Addr = other.Addr
+	}
+	if other.DatabasePath != "" {
+		c.DatabasePath = other.DatabasePath
 	}
 	if other.ReadHeaderTimeout != 0 {
 		c.ReadHeaderTimeout = other.ReadHeaderTimeout

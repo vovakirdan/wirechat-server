@@ -78,7 +78,10 @@ func run(cmd *cobra.Command, flags serverFlags) error {
 		cfg.ShutdownTimeout = flags.shutdownTimeout
 	}
 
-	application := app.New(cfg, logger)
+	application, err := app.New(cfg, logger)
+	if err != nil {
+		logger.Fatal().Err(err).Msg("failed to initialize application")
+	}
 
 	logger.Info().Str("addr", cfg.Addr).Str("config", cfgPath).Msg("starting wirechat server")
 	if err := application.Run(ctx); err != nil {

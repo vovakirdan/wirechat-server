@@ -1,6 +1,8 @@
-.PHONY: all test build lint fmt run bench ci race docker
+.PHONY: all test build lint fmt run bench ci race docker migrate migrate-up migrate-down migrate-status migrate-create
 
 GO ?= go
+DB_PATH ?= data/wirechat.db
+MIGRATIONS_DIR ?= migrations
 
 GOBIN := $(shell $(GO) env GOBIN)
 ifeq ($(GOBIN),)
@@ -42,3 +44,23 @@ ci: fmt lint test
 
 docker:
 	docker build -t wirechat-server:latest .
+
+# Database migrations (using goose)
+migrate: migrate-up
+
+migrate-up:
+	@echo ">> Running migrations up"
+	@mkdir -p $(dir $(DB_PATH))
+	@goose -dir $(MIGRATIONS_DIR) sqlite3 $(DB_PATH) up
+
+migrate-down:
+	@echo ">> Rolling back last migration"
+	@goose -dir $(MIGRATIONS_DIR) sqlite3 $(DB_PATH) down
+
+migrate-status:
+	@echo ">> Checking migration status"
+	@goose -dir $(MIGRATIONS_DIR) sqlite3 $(DB_PATH) status
+
+migrate-create:
+	@echo ">> Creating new migration (usage: make migrate-create NAME=migration_name)"
+	@goose -dir $(MIGRATIONS_DIR) create $(NAME) sql
