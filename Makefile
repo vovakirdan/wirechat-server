@@ -1,4 +1,4 @@
-.PHONY: all test build lint fmt run bench ci race docker migrate migrate-up migrate-down migrate-status migrate-create
+.PHONY: all test build lint fmt run bench ci race docker migrate migrate-up migrate-down migrate-status migrate-create livekit-up livekit-down livekit-logs
 
 GO ?= go
 DB_PATH ?= data/wirechat.db
@@ -70,3 +70,13 @@ migrate-status: $(GOOSE)
 migrate-create: $(GOOSE)
 	@echo ">> Creating new migration (usage: make migrate-create NAME=migration_name)"
 	@$(GOOSE) -dir $(MIGRATIONS_DIR) create $(NAME) sql
+
+# LiveKit infrastructure (dev)
+livekit-up:
+	@$(MAKE) -C infra/livekit up
+
+livekit-down:
+	@$(MAKE) -C infra/livekit down
+
+livekit-logs:
+	@$(MAKE) -C infra/livekit logs

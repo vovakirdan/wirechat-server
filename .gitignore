@@ -41,3 +41,8 @@ data/
 !config.example.yaml
 !.github/workflows/*.yaml
 !.github/workflows/*.yml
+
+# LiveKit
+infra/livekit/testclient/token-server/token-server
+infra/livekit/testclient/web/index.html
+infra/livekit/testclient/web/livekit-client.umd.min.js
