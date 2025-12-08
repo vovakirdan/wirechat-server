@@ -11,13 +11,32 @@ type Inbound struct {
 const (
 	ProtocolVersion = 1
 
+	// Chat inbound types
 	InboundTypeHello = "hello"
 	InboundTypeJoin  = "join"
 	InboundTypeLeave = "leave"
 	InboundTypeMsg   = "msg"
 
+	// Call inbound types
+	InboundTypeCallInvite = "call.invite"
+	InboundTypeCallAccept = "call.accept"
+	InboundTypeCallReject = "call.reject"
+	InboundTypeCallJoin   = "call.join"
+	InboundTypeCallLeave  = "call.leave"
+	InboundTypeCallEnd    = "call.end"
+
 	OutboundTypeEvent = "event"
 	OutboundTypeError = "error"
+
+	// Call event types (used in Outbound.Event field)
+	EventTypeCallIncoming          = "call.incoming"
+	EventTypeCallRinging           = "call.ringing"
+	EventTypeCallAccepted          = "call.accepted"
+	EventTypeCallRejected          = "call.rejected"
+	EventTypeCallJoinInfo          = "call.join-info"
+	EventTypeCallParticipantJoined = "call.participant-joined"
+	EventTypeCallParticipantLeft   = "call.participant-left"
+	EventTypeCallEnded             = "call.ended"
 )
 
 // HelloData is sent by the client to introduce itself.
@@ -77,4 +96,84 @@ type EventHistory struct {
 type Error struct {
 	Code string `json:"code"`
 	Msg  string `json:"msg"`
+}
+
+// --- Call Inbound Data Types ---
+
+// CallInviteData is sent to initiate a call.
+type CallInviteData struct {
+	CallType string `json:"call_type"`           // "direct" or "room"
+	ToUserID int64  `json:"to_user_id,omitempty"` // For direct calls
+	RoomID   int64  `json:"room_id,omitempty"`    // For room calls
+}
+
+// CallActionData is used for accept, reject, join, leave, end commands.
+type CallActionData struct {
+	CallID string `json:"call_id"`
+	Reason string `json:"reason,omitempty"` // For reject/leave
+}
+
+// --- Call Outbound Event Types ---
+
+// EventCallIncoming notifies target user(s) of an incoming call.
+type EventCallIncoming struct {
+	CallID       string `json:"call_id"`
+	CallType     string `json:"call_type"`
+	FromUserID   int64  `json:"from_user_id"`
+	FromUsername string `json:"from_username"`
+	RoomID       int64  `json:"room_id,omitempty"`
+	RoomName     string `json:"room_name,omitempty"`
+	CreatedAt    int64  `json:"created_at"`
+}
+
+// EventCallRinging confirms to initiator that call is ringing.
+type EventCallRinging struct {
+	CallID     string `json:"call_id"`
+	ToUserID   int64  `json:"to_user_id"`
+	ToUsername string `json:"to_username"`
+}
+
+// EventCallAccepted notifies initiator that call was accepted.
+type EventCallAccepted struct {
+	CallID             string `json:"call_id"`
+	AcceptedByUserID   int64  `json:"accepted_by_user_id"`
+	AcceptedByUsername string `json:"accepted_by_username"`
+}
+
+// EventCallRejected notifies initiator that call was rejected.
+type EventCallRejected struct {
+	CallID           string `json:"call_id"`
+	RejectedByUserID int64  `json:"rejected_by_user_id"`
+	Reason           string `json:"reason,omitempty"`
+}
+
+// EventCallJoinInfo delivers LiveKit credentials.
+type EventCallJoinInfo struct {
+	CallID   string `json:"call_id"`
+	URL      string `json:"url"`
+	Token    string `json:"token"`
+	RoomName string `json:"room_name"`
+	Identity string `json:"identity"`
+}
+
+// EventCallParticipantJoined notifies that someone joined the call.
+type EventCallParticipantJoined struct {
+	CallID   string `json:"call_id"`
+	UserID   int64  `json:"user_id"`
+	Username string `json:"username"`
+}
+
+// EventCallParticipantLeft notifies that someone left the call.
+type EventCallParticipantLeft struct {
+	CallID   string `json:"call_id"`
+	UserID   int64  `json:"user_id"`
+	Username string `json:"username"`
+	Reason   string `json:"reason,omitempty"`
+}
+
+// EventCallEnded notifies all participants that the call ended.
+type EventCallEnded struct {
+	CallID        string `json:"call_id"`
+	EndedByUserID int64  `json:"ended_by_user_id"`
+	Reason        string `json:"reason"`
 }

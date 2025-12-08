@@ -8,6 +8,14 @@ const (
 	ErrCodeAlreadyJoined = "already_joined"
 	ErrCodeNotInRoom     = "not_in_room"
 	ErrCodeBadRequest    = "bad_request"
+	ErrCodeUnauthorized  = "unauthorized"
+
+	// Call-related error codes
+	ErrCodeCallsDisabled = "calls_disabled"
+	ErrCodeCallNotFound  = "call_not_found"
+	ErrCodeCallEnded     = "call_ended"
+	ErrCodeNotParticipant = "not_participant"
+	ErrCodeCallError     = "call_error"
 )
 
 var (

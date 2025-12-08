@@ -308,3 +308,112 @@ func (s *Service) ListActiveCalls(ctx context.Context, userID int64) ([]*store.C
 	}
 	return calls, nil
 }
+
+// RejectCall rejects an incoming call.
+func (s *Service) RejectCall(ctx context.Context, callID string, byUserID int64, reason string) error {
+	call, err := s.store.GetCall(ctx, callID)
+	if err != nil {
+		return ErrCallNotFound
+	}
+
+	if call.Status != store.CallStatusRinging {
+		return ErrCallEnded
+	}
+
+	// Verify user is a participant
+	_, err = s.store.GetParticipant(ctx, callID, byUserID)
+	if err != nil {
+		return ErrNotParticipant
+	}
+
+	// Update call status to ended
+	now := time.Now()
+	call.Status = store.CallStatusEnded
+	call.EndedAt = &now
+	call.UpdatedAt = now
+
+	if err := s.store.UpdateCall(ctx, call); err != nil {
+		return fmt.Errorf("update call: %w", err)
+	}
+
+	// Update participant left_at
+	participant, _ := s.store.GetParticipant(ctx, callID, byUserID)
+	if participant != nil {
+		participant.LeftAt = &now
+		if reason != "" {
+			participant.Reason = &reason
+		}
+		//nolint:errcheck // Non-fatal
+		s.store.UpdateParticipant(ctx, participant)
+	}
+
+	return nil
+}
+
+// LeaveCall marks a participant as having left the call.
+func (s *Service) LeaveCall(ctx context.Context, callID string, userID int64) error {
+	participant, err := s.store.GetParticipant(ctx, callID, userID)
+	if err != nil {
+		return ErrNotParticipant
+	}
+
+	now := time.Now()
+	participant.LeftAt = &now
+	reason := "left"
+	participant.Reason = &reason
+
+	if err := s.store.UpdateParticipant(ctx, participant); err != nil {
+		return fmt.Errorf("update participant: %w", err)
+	}
+
+	// Check if all participants have left
+	// If so, end the call
+	participants, _ := s.store.ListParticipants(ctx, callID)
+	allLeft := true
+	for _, p := range participants {
+		if p.LeftAt == nil {
+			allLeft = false
+			break
+		}
+	}
+
+	if allLeft {
+		call, err := s.store.GetCall(ctx, callID)
+		if err == nil && call.Status != store.CallStatusEnded {
+			call.Status = store.CallStatusEnded
+			call.EndedAt = &now
+			call.UpdatedAt = now
+			//nolint:errcheck // Non-fatal
+			s.store.UpdateCall(ctx, call)
+		}
+	}
+
+	return nil
+}
+
+// GetTargetUser returns the username for a user ID.
+func (s *Service) GetTargetUser(ctx context.Context, userID int64) (string, error) {
+	user, err := s.store.GetUserByID(ctx, userID)
+	if err != nil {
+		return "", ErrUserNotFound
+	}
+	return user.Username, nil
+}
+
+// ListRoomMembers returns user IDs of all members in a room.
+func (s *Service) ListRoomMembers(ctx context.Context, roomID int64) ([]int64, error) {
+	members, err := s.store.ListMembers(ctx, roomID)
+	if err != nil {
+		return nil, fmt.Errorf("list members: %w", err)
+	}
+	return members, nil
+}
+
+// GetRoomInfo returns the room name for a room ID.
+func (s *Service) GetRoomInfo(ctx context.Context, roomID int64) (string, error) {
+	room, err := s.store.GetRoomByID(ctx, roomID)
+	if err != nil {
+		return "", ErrRoomNotFound
+	}
+	return room.Name, nil
+}

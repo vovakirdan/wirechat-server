@@ -18,6 +18,7 @@
 - [Room Types & Access Control](#room-types--access-control)
 - [Rate Limiting](#rate-limiting)
 - [WebSocket Keepalive](#websocket-keepalive)
+- [Call Protocol (Voice/Video Calls)](#call-protocol-voicevideo-calls)
 - [REST API](#rest-api)
 - [SDK Implementation Contract](#sdk-implementation-contract)
 - [Examples](#examples)
@@ -471,6 +472,395 @@ client_idle_timeout: 90s     # Inactivity timeout (3x ping_interval)
 - Messages arrive sporadically in chat, so blocking read is expected
 
 **Implementation Note**: WireChat uses `github.com/coder/websocket` library, which automatically handles pong frames during Read operations. The `client_idle_timeout` is applied via context timeout on each JSON read.
+
+---
+
+## Call Protocol (Voice/Video Calls)
+
+WireChat supports voice and video calls via LiveKit integration. Call signaling happens over WebSocket; actual media is handled by LiveKit.
+
+**Requirements**:
+- LiveKit must be enabled on server (`livekit.enabled: true`)
+- User must be authenticated (guests cannot make calls)
+- For direct calls: users must be friends (unless target allows calls from everyone)
+
+### Call State Machine
+
+```
+IDLE ──(call.invite)──> RINGING ──(call.accept)──> ACTIVE ──(call.leave/end)──> ENDED
+                           │                          │
+                           └──(call.reject)──> ENDED  │
+                                                      │
+                           (timeout)──────────────────┘
+```
+
+---
+
+### Call Inbound Messages (Client → Server)
+
+#### `call.invite` - Initiate Call
+
+Start a direct call to a user or room call.
+
+**Direct call**:
+```json
+{
+  "type": "call.invite",
+  "data": {
+    "call_type": "direct",
+    "to_user_id": 456
+  }
+}
+```
+
+**Room call**:
+```json
+{
+  "type": "call.invite",
+  "data": {
+    "call_type": "room",
+    "room_id": 123
+  }
+}
+```
+
+**Fields**:
+- `call_type` (string, required): `"direct"` or `"room"`
+- `to_user_id` (int64): Target user ID (required for direct calls)
+- `room_id` (int64): Room ID (required for room calls)
+
+**Behavior**:
+- Creates call record in database with status `ringing`
+- Direct calls: Sends `call.incoming` to target user, `call.ringing` to initiator
+- Room calls: Sends `call.incoming` to all room members (except initiator)
+
+**Errors**:
+- `unauthorized`: Guest users cannot make calls
+- `bad_request`: Missing `to_user_id` or `room_id`
+- `calls_disabled`: LiveKit not enabled on server
+- `not_friends`: Cannot call user who is not a friend (if target requires friends_only)
+- `calls_not_allowed`: Target user does not accept calls from non-friends
+- `rate_limited`: Too many call requests
+
+---
+
+#### `call.accept` - Accept Incoming Call
+
+Accept an incoming call and receive LiveKit join credentials.
+
+```json
+{
+  "type": "call.accept",
+  "data": {
+    "call_id": "uuid-string"
+  }
+}
+```
+
+**Fields**:
+- `call_id` (string, required): Call UUID from `call.incoming` event
+
+**Behavior**:
+- Updates call status to `active`
+- Sends `call.join-info` with LiveKit credentials to acceptor
+- Sends `call.accepted` to initiator
+- Sends `call.join-info` to initiator
+
+**Errors**:
+- `call_not_found`: Call does not exist
+- `call_ended`: Call has already ended
+- `not_participant`: User is not a participant in this call
+
+---
+
+#### `call.reject` - Reject Incoming Call
+
+Reject an incoming call.
+
+```json
+{
+  "type": "call.reject",
+  "data": {
+    "call_id": "uuid-string",
+    "reason": "busy"
+  }
+}
+```
+
+**Fields**:
+- `call_id` (string, required): Call UUID
+- `reason` (string, optional): Rejection reason (`"busy"`, `"declined"`, `"unavailable"`)
+
+**Behavior**:
+- Updates call status to `ended`
+- Sends `call.rejected` to initiator
+- Sends `call.ended` to all participants
+
+---
+
+#### `call.join` - Join Active Call
+
+Join or rejoin an active call (for reconnection or late joining).
+
+```json
+{
+  "type": "call.join",
+  "data": {
+    "call_id": "uuid-string"
+  }
+}
+```
+
+**Fields**:
+- `call_id` (string, required): Call UUID
+
+**Behavior**:
+- Sends `call.join-info` with LiveKit credentials
+- Sends `call.participant-joined` to other participants
+
+**Errors**:
+- `call_not_found`: Call does not exist
+- `call_ended`: Call has ended
+- `not_participant`: User is not a participant
+
+---
+
+#### `call.leave` - Leave Call
+
+Leave an active call (participant leaves, call may continue for others).
+
+```json
+{
+  "type": "call.leave",
+  "data": {
+    "call_id": "uuid-string"
+  }
+}
+```
+
+**Fields**:
+- `call_id` (string, required): Call UUID
+
+**Behavior**:
+- Updates participant `left_at` timestamp
+- Sends `call.participant-left` to remaining participants
+- If all participants have left, call status changes to `ended`
+
+---
+
+#### `call.end` - End Call
+
+End the call for all participants (typically by initiator).
+
+```json
+{
+  "type": "call.end",
+  "data": {
+    "call_id": "uuid-string"
+  }
+}
+```
+
+**Fields**:
+- `call_id` (string, required): Call UUID
+
+**Behavior**:
+- Updates call status to `ended`
+- Sends `call.ended` to all participants
+- Terminates LiveKit room (if supported by engine)
+
+---
+
+### Call Outbound Events (Server → Client)
+
+#### `event: "call.incoming"` - Incoming Call
+
+Sent to target user(s) when someone initiates a call.
+
+```json
+{
+  "type": "event",
+  "event": "call.incoming",
+  "data": {
+    "call_id": "uuid-string",
+    "call_type": "direct",
+    "from_user_id": 123,
+    "from_username": "alice",
+    "room_id": null,
+    "room_name": null,
+    "created_at": 1702000000
+  }
+}
+```
+
+**Fields**:
+- `call_id` (string): Unique call identifier
+- `call_type` (string): `"direct"` or `"room"`
+- `from_user_id` (int64): Initiator's user ID
+- `from_username` (string): Initiator's username
+- `room_id` (int64, nullable): Room ID for room calls
+- `room_name` (string, nullable): Room name for room calls
+- `created_at` (int64): Unix timestamp when call was created
+
+---
+
+#### `event: "call.ringing"` - Call Ringing
+
+Sent to initiator confirming the call is ringing.
+
+```json
+{
+  "type": "event",
+  "event": "call.ringing",
+  "data": {
+    "call_id": "uuid-string",
+    "to_user_id": 456,
+    "to_username": "bob"
+  }
+}
+```
+
+**Fields**:
+- `call_id` (string): Call identifier
+- `to_user_id` (int64): Target user ID
+- `to_username` (string): Target username
+
+---
+
+#### `event: "call.accepted"` - Call Accepted
+
+Sent to initiator when target accepts the call.
+
+```json
+{
+  "type": "event",
+  "event": "call.accepted",
+  "data": {
+    "call_id": "uuid-string",
+    "accepted_by_user_id": 456,
+    "accepted_by_username": "bob"
+  }
+}
+```
+
+---
+
+#### `event: "call.rejected"` - Call Rejected
+
+Sent to initiator when target rejects the call.
+
+```json
+{
+  "type": "event",
+  "event": "call.rejected",
+  "data": {
+    "call_id": "uuid-string",
+    "rejected_by_user_id": 456,
+    "reason": "busy"
+  }
+}
+```
+
+---
+
+#### `event: "call.join-info"` - LiveKit Join Credentials
+
+Sent when user should connect to LiveKit (after accept or join).
+
+```json
+{
+  "type": "event",
+  "event": "call.join-info",
+  "data": {
+    "call_id": "uuid-string",
+    "url": "ws://localhost:7880",
+    "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
+    "room_name": "wirechat-direct-uuid",
+    "identity": "user-123"
+  }
+}
+```
+
+**Fields**:
+- `call_id` (string): Call identifier
+- `url` (string): LiveKit WebSocket URL
+- `token` (string): LiveKit JWT token (valid for 1 hour)
+- `room_name` (string): LiveKit room name
+- `identity` (string): User's identity in LiveKit room
+
+**Client Action**: Use these credentials to connect to LiveKit using their SDK.
+
+---
+
+#### `event: "call.participant-joined"` - Participant Joined
+
+Sent to participants when someone joins an active call.
+
+```json
+{
+  "type": "event",
+  "event": "call.participant-joined",
+  "data": {
+    "call_id": "uuid-string",
+    "user_id": 789,
+    "username": "charlie"
+  }
+}
+```
+
+---
+
+#### `event: "call.participant-left"` - Participant Left
+
+Sent to participants when someone leaves the call.
+
+```json
+{
+  "type": "event",
+  "event": "call.participant-left",
+  "data": {
+    "call_id": "uuid-string",
+    "user_id": 789,
+    "username": "charlie",
+    "reason": "left"
+  }
+}
+```
+
+**Reason values**: `"left"` (voluntary), `"disconnected"` (connection lost)
+
+---
+
+#### `event: "call.ended"` - Call Ended
+
+Sent to all participants when the call ends.
+
+```json
+{
+  "type": "event",
+  "event": "call.ended",
+  "data": {
+    "call_id": "uuid-string",
+    "ended_by_user_id": 123,
+    "reason": "ended"
+  }
+}
+```
+
+**Reason values**: `"ended"` (normal), `"rejected"`, `"timeout"`, `"failed"`
+
+---
+
+### Call Error Codes
+
+| Code | Description | Triggered By |
+|------|-------------|--------------|
+| `calls_disabled` | LiveKit not enabled | Any call command when LiveKit disabled |
+| `call_not_found` | Call does not exist | `accept`, `reject`, `join`, `leave`, `end` with invalid call_id |
+| `call_ended` | Call has already ended | Any action on ended call |
+| `not_participant` | Not a call participant | Actions by non-participants |
+| `not_friends` | Users are not friends | Direct call to non-friend (if required) |
+| `calls_not_allowed` | Target blocks non-friend calls | Direct call when target has `friends_only` setting |
 
 ---
 

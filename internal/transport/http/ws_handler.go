@@ -181,6 +181,12 @@ func (h *WSHandler) readLoop(ctx context.Context, conn *websocket.Conn, client *
 				if !msgLimiter.allow() {
 					protoErr = &proto.Error{Code: "rate_limited", Msg: "too many messages"}
 				}
+			case core.CommandCallInvite, core.CommandCallAccept, core.CommandCallReject,
+				core.CommandCallJoin, core.CommandCallLeave, core.CommandCallEnd:
+				// Call commands require authenticated (non-guest) user
+				if client.IsGuest || client.UserID == 0 {
+					protoErr = &proto.Error{Code: core.ErrCodeUnauthorized, Msg: "calls require authentication"}
+				}
 			}
 		}
 		if protoErr != nil {
@@ -354,6 +360,18 @@ func commandKindString(kind core.CommandKind) string {
 		return "leave"
 	case core.CommandSendRoomMessage:
 		return "msg"
+	case core.CommandCallInvite:
+		return "call.invite"
+	case core.CommandCallAccept:
+		return "call.accept"
+	case core.CommandCallReject:
+		return "call.reject"
+	case core.CommandCallJoin:
+		return "call.join"
+	case core.CommandCallLeave:
+		return "call.leave"
+	case core.CommandCallEnd:
+		return "call.end"
 	default:
 		return "unknown"
 	}

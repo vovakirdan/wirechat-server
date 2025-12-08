@@ -68,7 +68,9 @@ func New(cfg *config.Config, logger *zerolog.Logger) (*App, error) {
 
 	callsService := calls.New(st, callEngine, friendsService)
 
-	hub := core.NewHub(st)
+	// Pass callsService as core.CallService to Hub
+	// If LiveKit is disabled, callsService won't be nil but its methods will return errors
+	hub := core.NewHub(st, callsService)
 	server := transporthttp.NewServer(hub, authService, st, friendsService, callsService, cfg, logger)
 
 	return &App{

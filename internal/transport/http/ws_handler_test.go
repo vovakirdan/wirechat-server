@@ -28,7 +28,7 @@ func startTestServer(t *testing.T) (*httptest.Server, context.CancelFunc) {
 	// Create auth service
 	authService := createTestAuthService(t, store, "test-secret")
 
-	hub := core.NewHub(store)
+	hub := core.NewHub(store, nil)
 	ctx, cancel := context.WithCancel(context.Background())
 	go hub.Run(ctx)
 
@@ -59,7 +59,7 @@ func startTestServerWithConfig(t *testing.T, cfg config.Config) (*httptest.Serve
 	// Create auth service
 	authService := createTestAuthService(t, store, cfg.JWTSecret)
 
-	hub := core.NewHub(store)
+	hub := core.NewHub(store, nil)
 	ctx, cancel := context.WithCancel(context.Background())
 	go hub.Run(ctx)
 
@@ -328,7 +328,7 @@ func TestWebSocketDirectRoomJoin(t *testing.T) {
 	// Create auth service
 	authService := createTestAuthService(t, testStore, "test-secret")
 
-	hub := core.NewHub(testStore)
+	hub := core.NewHub(testStore, nil)
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	go hub.Run(ctx)
