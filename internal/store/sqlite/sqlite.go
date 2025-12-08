@@ -903,6 +903,56 @@ func (s *SQLiteStore) ListActiveCalls(ctx context.Context, userID int64) ([]*sto
 	return calls, rows.Err()
 }
 
+// GetActiveCallForRoom returns an active call for a room, or nil if none exists.
+func (s *SQLiteStore) GetActiveCallForRoom(ctx context.Context, roomID int64) (*store.Call, error) {
+	query := `
+		SELECT id, type, mode, initiator_user_id, room_id, status, external_room_id, created_at, updated_at, ended_at
+		FROM calls
+		WHERE room_id = ? AND status IN ('ringing', 'active')
+		ORDER BY created_at DESC
+		LIMIT 1
+	`
+	var call store.Call
+	var callType, mode, status string
+	var roomIDNullable sql.NullInt64
+	var externalRoomID sql.NullString
+	var endedAt sql.NullTime
+
+	err := s.db.QueryRowContext(ctx, query, roomID).Scan(
+		&call.ID,
+		&callType,
+		&mode,
+		&call.InitiatorUserID,
+		&roomIDNullable,
+		&status,
+		&externalRoomID,
+		&call.CreatedAt,
+		&call.UpdatedAt,
+		&endedAt,
+	)
+	if err == sql.ErrNoRows {
+		return nil, nil // No active call
+	}
+	if err != nil {
+		return nil, fmt.Errorf("query active call for room: %w", err)
+	}
+
+	call.Type = store.CallType(callType)
+	call.Mode = store.CallMode(mode)
+	call.Status = store.CallStatus(status)
+	if roomIDNullable.Valid {
+		call.RoomID = &roomIDNullable.Int64
+	}
+	if externalRoomID.Valid {
+		call.ExternalRoomID = &externalRoomID.String
+	}
+	if endedAt.Valid {
+		call.EndedAt = &endedAt.Time
+	}
+
+	return &call, nil
+}
+
 // AddParticipant adds a participant to a call.
 func (s *SQLiteStore) AddParticipant(ctx context.Context, p *store.CallParticipant) error {
 	query := `

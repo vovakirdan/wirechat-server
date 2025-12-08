@@ -231,6 +231,9 @@ type CallStore interface {
 	// ListActiveCalls lists active calls (ringing or active) for a user.
 	ListActiveCalls(ctx context.Context, userID int64) ([]*Call, error)
 
+	// GetActiveCallForRoom returns an active call for a room, or nil if none exists.
+	GetActiveCallForRoom(ctx context.Context, roomID int64) (*Call, error)
+
 	// AddParticipant adds a participant to a call.
 	AddParticipant(ctx context.Context, p *CallParticipant) error
 

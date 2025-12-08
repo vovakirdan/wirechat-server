@@ -119,7 +119,7 @@ func (s *Service) CreateDirectCall(ctx context.Context, fromUserID, toUserID int
 	return call, nil
 }
 
-// CreateRoomCall creates a call in a chat room.
+// CreateRoomCall creates a call in a chat room, or returns existing active call.
 func (s *Service) CreateRoomCall(ctx context.Context, initiatorUserID, roomID int64) (*store.Call, error) {
 	if s.engine == nil {
 		return nil, ErrLiveKitNotEnabled
@@ -138,6 +138,28 @@ func (s *Service) CreateRoomCall(ctx context.Context, initiatorUserID, roomID in
 	}
 	if !isMember {
 		return nil, ErrNotRoomMember
+	}
+
+	// Check if there's already an active call for this room
+	existingCall, err := s.store.GetActiveCallForRoom(ctx, roomID)
+	if err != nil {
+		return nil, fmt.Errorf("check existing call: %w", err)
+	}
+	if existingCall != nil {
+		// Join the existing call instead of creating a new one
+		// Check if user is already a participant
+		participant, _ := s.store.GetParticipant(ctx, existingCall.ID, initiatorUserID)
+		if participant == nil {
+			// Add user as participant
+			p := &store.CallParticipant{
+				CallID: existingCall.ID,
+				UserID: initiatorUserID,
+			}
+			if err := s.store.AddParticipant(ctx, p); err != nil {
+				return nil, fmt.Errorf("add participant to existing call: %w", err)
+			}
+		}
+		return existingCall, nil
 	}
 
 	// Generate call ID
