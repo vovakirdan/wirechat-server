@@ -38,7 +38,7 @@ func TestCreateRoom(t *testing.T) {
 		JWTSecret:         "test-secret",
 	}
 
-	server := NewServer(hub, authService, testStore, &cfg, &disabledLogger)
+	server := NewServer(hub, authService, testStore, nil, nil, &cfg, &disabledLogger)
 	ts := httptest.NewServer(server.Handler)
 	defer ts.Close()
 
@@ -125,7 +125,7 @@ func TestListRooms(t *testing.T) {
 		JWTSecret:         "test-secret",
 	}
 
-	server := NewServer(hub, authService, testStore, &cfg, &disabledLogger)
+	server := NewServer(hub, authService, testStore, nil, nil, &cfg, &disabledLogger)
 	ts := httptest.NewServer(server.Handler)
 	defer ts.Close()
 
@@ -213,7 +213,7 @@ func TestCreateDirectRoom(t *testing.T) {
 		JWTSecret:         "test-secret",
 	}
 
-	server := NewServer(hub, authService, testStore, &cfg, &disabledLogger)
+	server := NewServer(hub, authService, testStore, nil, nil, &cfg, &disabledLogger)
 	ts := httptest.NewServer(server.Handler)
 	defer ts.Close()
 

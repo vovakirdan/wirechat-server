@@ -555,3 +555,464 @@ func (s *SQLiteStore) ListMessages(ctx context.Context, roomID int64, limit int,
 
 	return messages, rows.Err()
 }
+
+// ==== UserStore additions ====
+
+// GetUserCallSettings retrieves user's call privacy settings.
+func (s *SQLiteStore) GetUserCallSettings(ctx context.Context, userID int64) (store.AllowCallsFrom, error) {
+	query := `SELECT allow_calls_from FROM users WHERE id = ?`
+	var setting string
+	err := s.db.QueryRowContext(ctx, query, userID).Scan(&setting)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return "", fmt.Errorf("user not found: %w", err)
+		}
+		return "", fmt.Errorf("query user settings: %w", err)
+	}
+	return store.AllowCallsFrom(setting), nil
+}
+
+// UpdateUserCallSettings updates user's call privacy settings.
+func (s *SQLiteStore) UpdateUserCallSettings(ctx context.Context, userID int64, setting store.AllowCallsFrom) error {
+	query := `UPDATE users SET allow_calls_from = ? WHERE id = ?`
+	result, err := s.db.ExecContext(ctx, query, string(setting), userID)
+	if err != nil {
+		return fmt.Errorf("update user settings: %w", err)
+	}
+	rows, err := result.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("get rows affected: %w", err)
+	}
+	if rows == 0 {
+		return fmt.Errorf("user not found")
+	}
+	return nil
+}
+
+// ==== FriendStore implementation ====
+
+// CreateFriendRequest creates a new friend request (pending status).
+func (s *SQLiteStore) CreateFriendRequest(ctx context.Context, userID, friendID int64) (*store.Friend, error) {
+	query := `
+		INSERT INTO friends (user_id, friend_id, status)
+		VALUES (?, ?, 'pending')
+	`
+	result, err := s.db.ExecContext(ctx, query, userID, friendID)
+	if err != nil {
+		return nil, fmt.Errorf("insert friend request: %w", err)
+	}
+
+	id, err := result.LastInsertId()
+	if err != nil {
+		return nil, fmt.Errorf("get last insert id: %w", err)
+	}
+
+	return s.getFriendByID(ctx, id)
+}
+
+// getFriendByID is a helper to retrieve a friend record by ID.
+func (s *SQLiteStore) getFriendByID(ctx context.Context, id int64) (*store.Friend, error) {
+	query := `
+		SELECT id, user_id, friend_id, status, created_at, updated_at
+		FROM friends
+		WHERE id = ?
+	`
+	var friend store.Friend
+	var status string
+	err := s.db.QueryRowContext(ctx, query, id).Scan(
+		&friend.ID,
+		&friend.UserID,
+		&friend.FriendID,
+		&status,
+		&friend.CreatedAt,
+		&friend.UpdatedAt,
+	)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, fmt.Errorf("friend not found: %w", err)
+		}
+		return nil, fmt.Errorf("query friend: %w", err)
+	}
+	friend.Status = store.FriendStatus(status)
+	return &friend, nil
+}
+
+// UpdateFriendStatus updates the status of a friendship.
+func (s *SQLiteStore) UpdateFriendStatus(ctx context.Context, userID, friendID int64, status store.FriendStatus) error {
+	query := `
+		UPDATE friends
+		SET status = ?, updated_at = CURRENT_TIMESTAMP
+		WHERE user_id = ? AND friend_id = ?
+	`
+	result, err := s.db.ExecContext(ctx, query, string(status), userID, friendID)
+	if err != nil {
+		return fmt.Errorf("update friend status: %w", err)
+	}
+	rows, err := result.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("get rows affected: %w", err)
+	}
+	if rows == 0 {
+		return fmt.Errorf("friendship not found")
+	}
+	return nil
+}
+
+// GetFriendship retrieves a friendship between two users (in either direction).
+func (s *SQLiteStore) GetFriendship(ctx context.Context, userID, friendID int64) (*store.Friend, error) {
+	query := `
+		SELECT id, user_id, friend_id, status, created_at, updated_at
+		FROM friends
+		WHERE (user_id = ? AND friend_id = ?) OR (user_id = ? AND friend_id = ?)
+	`
+	var friend store.Friend
+	var status string
+	err := s.db.QueryRowContext(ctx, query, userID, friendID, friendID, userID).Scan(
+		&friend.ID,
+		&friend.UserID,
+		&friend.FriendID,
+		&status,
+		&friend.CreatedAt,
+		&friend.UpdatedAt,
+	)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, fmt.Errorf("friendship not found: %w", err)
+		}
+		return nil, fmt.Errorf("query friendship: %w", err)
+	}
+	friend.Status = store.FriendStatus(status)
+	return &friend, nil
+}
+
+// ListFriends lists friendships for a user, optionally filtered by status.
+func (s *SQLiteStore) ListFriends(ctx context.Context, userID int64, status *store.FriendStatus) ([]*store.Friend, error) {
+	var query string
+	var args []interface{}
+
+	if status != nil {
+		query = `
+			SELECT id, user_id, friend_id, status, created_at, updated_at
+			FROM friends
+			WHERE (user_id = ? OR friend_id = ?) AND status = ?
+			ORDER BY updated_at DESC
+		`
+		args = []interface{}{userID, userID, string(*status)}
+	} else {
+		query = `
+			SELECT id, user_id, friend_id, status, created_at, updated_at
+			FROM friends
+			WHERE user_id = ? OR friend_id = ?
+			ORDER BY updated_at DESC
+		`
+		args = []interface{}{userID, userID}
+	}
+
+	rows, err := s.db.QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, fmt.Errorf("query friends: %w", err)
+	}
+	defer rows.Close()
+
+	var friends []*store.Friend
+	for rows.Next() {
+		var friend store.Friend
+		var statusStr string
+		if err := rows.Scan(&friend.ID, &friend.UserID, &friend.FriendID, &statusStr, &friend.CreatedAt, &friend.UpdatedAt); err != nil {
+			return nil, fmt.Errorf("scan friend: %w", err)
+		}
+		friend.Status = store.FriendStatus(statusStr)
+		friends = append(friends, &friend)
+	}
+
+	return friends, rows.Err()
+}
+
+// IsFriend checks if two users are friends (accepted status in either direction).
+func (s *SQLiteStore) IsFriend(ctx context.Context, userID, friendID int64) (bool, error) {
+	query := `
+		SELECT 1 FROM friends
+		WHERE ((user_id = ? AND friend_id = ?) OR (user_id = ? AND friend_id = ?))
+		AND status = 'accepted'
+	`
+	var exists int
+	err := s.db.QueryRowContext(ctx, query, userID, friendID, friendID, userID).Scan(&exists)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return false, nil
+		}
+		return false, fmt.Errorf("query friendship: %w", err)
+	}
+	return true, nil
+}
+
+// DeleteFriendship removes a friendship record.
+func (s *SQLiteStore) DeleteFriendship(ctx context.Context, userID, friendID int64) error {
+	query := `DELETE FROM friends WHERE user_id = ? AND friend_id = ?`
+	_, err := s.db.ExecContext(ctx, query, userID, friendID)
+	if err != nil {
+		return fmt.Errorf("delete friendship: %w", err)
+	}
+	return nil
+}
+
+// ==== CallStore implementation ====
+
+// CreateCall creates a new call.
+func (s *SQLiteStore) CreateCall(ctx context.Context, call *store.Call) error {
+	query := `
+		INSERT INTO calls (id, type, mode, initiator_user_id, room_id, status, external_room_id)
+		VALUES (?, ?, ?, ?, ?, ?, ?)
+	`
+	_, err := s.db.ExecContext(ctx, query,
+		call.ID,
+		string(call.Type),
+		string(call.Mode),
+		call.InitiatorUserID,
+		call.RoomID,
+		string(call.Status),
+		call.ExternalRoomID,
+	)
+	if err != nil {
+		return fmt.Errorf("insert call: %w", err)
+	}
+	return nil
+}
+
+// UpdateCall updates an existing call.
+func (s *SQLiteStore) UpdateCall(ctx context.Context, call *store.Call) error {
+	query := `
+		UPDATE calls
+		SET status = ?, external_room_id = ?, updated_at = CURRENT_TIMESTAMP, ended_at = ?
+		WHERE id = ?
+	`
+	_, err := s.db.ExecContext(ctx, query,
+		string(call.Status),
+		call.ExternalRoomID,
+		call.EndedAt,
+		call.ID,
+	)
+	if err != nil {
+		return fmt.Errorf("update call: %w", err)
+	}
+	return nil
+}
+
+// GetCall retrieves a call by ID.
+func (s *SQLiteStore) GetCall(ctx context.Context, id string) (*store.Call, error) {
+	query := `
+		SELECT id, type, mode, initiator_user_id, room_id, status, external_room_id, created_at, updated_at, ended_at
+		FROM calls
+		WHERE id = ?
+	`
+	var call store.Call
+	var callType, mode, status string
+	var roomID sql.NullInt64
+	var externalRoomID sql.NullString
+	var endedAt sql.NullTime
+
+	err := s.db.QueryRowContext(ctx, query, id).Scan(
+		&call.ID,
+		&callType,
+		&mode,
+		&call.InitiatorUserID,
+		&roomID,
+		&status,
+		&externalRoomID,
+		&call.CreatedAt,
+		&call.UpdatedAt,
+		&endedAt,
+	)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, fmt.Errorf("call not found: %w", err)
+		}
+		return nil, fmt.Errorf("query call: %w", err)
+	}
+
+	call.Type = store.CallType(callType)
+	call.Mode = store.CallMode(mode)
+	call.Status = store.CallStatus(status)
+	if roomID.Valid {
+		call.RoomID = &roomID.Int64
+	}
+	if externalRoomID.Valid {
+		call.ExternalRoomID = &externalRoomID.String
+	}
+	if endedAt.Valid {
+		call.EndedAt = &endedAt.Time
+	}
+
+	return &call, nil
+}
+
+// ListActiveCalls lists active calls (ringing or active) for a user.
+func (s *SQLiteStore) ListActiveCalls(ctx context.Context, userID int64) ([]*store.Call, error) {
+	query := `
+		SELECT DISTINCT c.id, c.type, c.mode, c.initiator_user_id, c.room_id, c.status, c.external_room_id, c.created_at, c.updated_at, c.ended_at
+		FROM calls c
+		JOIN call_participants cp ON c.id = cp.call_id
+		WHERE cp.user_id = ? AND c.status IN ('ringing', 'active')
+		ORDER BY c.created_at DESC
+	`
+	rows, err := s.db.QueryContext(ctx, query, userID)
+	if err != nil {
+		return nil, fmt.Errorf("query active calls: %w", err)
+	}
+	defer rows.Close()
+
+	var calls []*store.Call
+	for rows.Next() {
+		var call store.Call
+		var callType, mode, status string
+		var roomID sql.NullInt64
+		var externalRoomID sql.NullString
+		var endedAt sql.NullTime
+
+		if err := rows.Scan(
+			&call.ID,
+			&callType,
+			&mode,
+			&call.InitiatorUserID,
+			&roomID,
+			&status,
+			&externalRoomID,
+			&call.CreatedAt,
+			&call.UpdatedAt,
+			&endedAt,
+		); err != nil {
+			return nil, fmt.Errorf("scan call: %w", err)
+		}
+
+		call.Type = store.CallType(callType)
+		call.Mode = store.CallMode(mode)
+		call.Status = store.CallStatus(status)
+		if roomID.Valid {
+			call.RoomID = &roomID.Int64
+		}
+		if externalRoomID.Valid {
+			call.ExternalRoomID = &externalRoomID.String
+		}
+		if endedAt.Valid {
+			call.EndedAt = &endedAt.Time
+		}
+
+		calls = append(calls, &call)
+	}
+
+	return calls, rows.Err()
+}
+
+// AddParticipant adds a participant to a call.
+func (s *SQLiteStore) AddParticipant(ctx context.Context, p *store.CallParticipant) error {
+	query := `
+		INSERT INTO call_participants (call_id, user_id, joined_at, left_at, reason)
+		VALUES (?, ?, ?, ?, ?)
+	`
+	result, err := s.db.ExecContext(ctx, query, p.CallID, p.UserID, p.JoinedAt, p.LeftAt, p.Reason)
+	if err != nil {
+		return fmt.Errorf("insert participant: %w", err)
+	}
+	id, err := result.LastInsertId()
+	if err != nil {
+		return fmt.Errorf("get last insert id: %w", err)
+	}
+	p.ID = id
+	return nil
+}
+
+// UpdateParticipant updates a participant record.
+func (s *SQLiteStore) UpdateParticipant(ctx context.Context, p *store.CallParticipant) error {
+	query := `
+		UPDATE call_participants
+		SET joined_at = ?, left_at = ?, reason = ?
+		WHERE call_id = ? AND user_id = ?
+	`
+	_, err := s.db.ExecContext(ctx, query, p.JoinedAt, p.LeftAt, p.Reason, p.CallID, p.UserID)
+	if err != nil {
+		return fmt.Errorf("update participant: %w", err)
+	}
+	return nil
+}
+
+// GetParticipant retrieves a participant from a call.
+func (s *SQLiteStore) GetParticipant(ctx context.Context, callID string, userID int64) (*store.CallParticipant, error) {
+	query := `
+		SELECT id, call_id, user_id, joined_at, left_at, reason
+		FROM call_participants
+		WHERE call_id = ? AND user_id = ?
+	`
+	var p store.CallParticipant
+	var joinedAt, leftAt sql.NullTime
+	var reason sql.NullString
+
+	err := s.db.QueryRowContext(ctx, query, callID, userID).Scan(
+		&p.ID,
+		&p.CallID,
+		&p.UserID,
+		&joinedAt,
+		&leftAt,
+		&reason,
+	)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, fmt.Errorf("participant not found: %w", err)
+		}
+		return nil, fmt.Errorf("query participant: %w", err)
+	}
+
+	if joinedAt.Valid {
+		p.JoinedAt = &joinedAt.Time
+	}
+	if leftAt.Valid {
+		p.LeftAt = &leftAt.Time
+	}
+	if reason.Valid {
+		p.Reason = &reason.String
+	}
+
+	return &p, nil
+}
+
+// ListParticipants lists all participants in a call.
+func (s *SQLiteStore) ListParticipants(ctx context.Context, callID string) ([]*store.CallParticipant, error) {
+	query := `
+		SELECT id, call_id, user_id, joined_at, left_at, reason
+		FROM call_participants
+		WHERE call_id = ?
+		ORDER BY id ASC
+	`
+	rows, err := s.db.QueryContext(ctx, query, callID)
+	if err != nil {
+		return nil, fmt.Errorf("query participants: %w", err)
+	}
+	defer rows.Close()
+
+	var participants []*store.CallParticipant
+	for rows.Next() {
+		var p store.CallParticipant
+		var joinedAt, leftAt sql.NullTime
+		var reason sql.NullString
+
+		if err := rows.Scan(&p.ID, &p.CallID, &p.UserID, &joinedAt, &leftAt, &reason); err != nil {
+			return nil, fmt.Errorf("scan participant: %w", err)
+		}
+
+		if joinedAt.Valid {
+			p.JoinedAt = &joinedAt.Time
+		}
+		if leftAt.Valid {
+			p.LeftAt = &leftAt.Time
+		}
+		if reason.Valid {
+			p.Reason = &reason.String
+		}
+
+		participants = append(participants, &p)
+	}
+
+	return participants, rows.Err()
+}
+
+// Ensure SQLiteStore implements store.Store
+var _ store.Store = (*SQLiteStore)(nil)

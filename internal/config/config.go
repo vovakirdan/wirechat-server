@@ -2,6 +2,14 @@ package config
 
 import "time"
 
+// LiveKitConfig holds LiveKit integration settings.
+type LiveKitConfig struct {
+	Enabled   bool   `mapstructure:"enabled" yaml:"enabled"`
+	APIKey    string `mapstructure:"api_key" yaml:"api_key"`
+	APISecret string `mapstructure:"api_secret" yaml:"api_secret"`
+	WSURL     string `mapstructure:"ws_url" yaml:"ws_url"`
+}
+
 // Config holds server configuration values.
 type Config struct {
 	Addr                string        `mapstructure:"addr" yaml:"addr"`
@@ -17,6 +25,7 @@ type Config struct {
 	JWTAudience         string        `mapstructure:"jwt_audience" yaml:"jwt_audience"`
 	JWTIssuer           string        `mapstructure:"jwt_issuer" yaml:"jwt_issuer"`
 	JWTRequired         bool          `mapstructure:"jwt_required" yaml:"jwt_required"`
+	LiveKit             LiveKitConfig `mapstructure:"livekit" yaml:"livekit"`
 }
 
 // Default returns configuration with reasonable starter defaults.
@@ -35,6 +44,12 @@ func Default() Config {
 		JWTAudience:         "wirechat",
 		JWTIssuer:           "wirechat-server",
 		JWTRequired:         false,
+		LiveKit: LiveKitConfig{
+			Enabled:   false,
+			APIKey:    "",
+			APISecret: "",
+			WSURL:     "ws://localhost:7880",
+		},
 	}
 }
 
@@ -81,5 +96,18 @@ func (c *Config) UpdateFrom(other *Config) {
 	}
 	if other.JWTRequired {
 		c.JWTRequired = other.JWTRequired
+	}
+	// LiveKit config
+	if other.LiveKit.Enabled {
+		c.LiveKit.Enabled = other.LiveKit.Enabled
+	}
+	if other.LiveKit.APIKey != "" {
+		c.LiveKit.APIKey = other.LiveKit.APIKey
+	}
+	if other.LiveKit.APISecret != "" {
+		c.LiveKit.APISecret = other.LiveKit.APISecret
+	}
+	if other.LiveKit.WSURL != "" {
+		c.LiveKit.WSURL = other.LiveKit.WSURL
 	}
 }

@@ -51,6 +51,82 @@ type RoomMember struct {
 	JoinedAt time.Time
 }
 
+// FriendStatus defines friend relationship status.
+type FriendStatus string
+
+const (
+	FriendStatusPending  FriendStatus = "pending"
+	FriendStatusAccepted FriendStatus = "accepted"
+	FriendStatusBlocked  FriendStatus = "blocked"
+)
+
+// Friend represents a friend relationship.
+type Friend struct {
+	ID        int64
+	UserID    int64
+	FriendID  int64
+	Status    FriendStatus
+	CreatedAt time.Time
+	UpdatedAt time.Time
+}
+
+// CallType defines the type of call.
+type CallType string
+
+const (
+	CallTypeDirect CallType = "direct"
+	CallTypeRoom   CallType = "room"
+)
+
+// CallStatus defines call status.
+type CallStatus string
+
+const (
+	CallStatusRinging CallStatus = "ringing"
+	CallStatusActive  CallStatus = "active"
+	CallStatusEnded   CallStatus = "ended"
+	CallStatusFailed  CallStatus = "failed"
+)
+
+// CallMode defines the media backend.
+type CallMode string
+
+const (
+	CallModeLiveKit CallMode = "livekit"
+)
+
+// Call represents a voice/video call.
+type Call struct {
+	ID              string // UUID
+	Type            CallType
+	Mode            CallMode
+	InitiatorUserID int64
+	RoomID          *int64
+	Status          CallStatus
+	ExternalRoomID  *string
+	CreatedAt       time.Time
+	UpdatedAt       time.Time
+	EndedAt         *time.Time
+}
+
+// CallParticipant represents a user in a call.
+type CallParticipant struct {
+	ID       int64
+	CallID   string
+	UserID   int64
+	JoinedAt *time.Time
+	LeftAt   *time.Time
+	Reason   *string
+}
+
+// AllowCallsFrom defines who can call a user.
+type AllowCallsFrom string
+
+const (
+	AllowCallsFromEveryone    AllowCallsFrom = "everyone"
+	AllowCallsFromFriendsOnly AllowCallsFrom = "friends_only"
+)
+
 // UserStore handles user persistence.
 type UserStore interface {
 	// CreateUser creates a new user with hashed password.
@@ -67,6 +143,12 @@ type UserStore interface {
 
 	// GetUserBySessionID retrieves a guest user by session ID.
 	GetUserBySessionID(ctx context.Context, sessionID string) (*User, error)
+
+	// GetUserCallSettings retrieves user's call privacy settings.
+	GetUserCallSettings(ctx context.Context, userID int64) (AllowCallsFrom, error)
+
+	// UpdateUserCallSettings updates user's call privacy settings.
+	UpdateUserCallSettings(ctx context.Context, userID int64, setting AllowCallsFrom) error
 }
 
 // RoomStore handles room persistence.
@@ -114,11 +196,61 @@ type MessageStore interface {
 	ListMessages(ctx context.Context, roomID int64, limit int, beforeID *int64) ([]*Message, error)
 }
 
+// FriendStore handles friend persistence.
+type FriendStore interface {
+	// CreateFriendRequest creates a new friend request (pending status).
+	CreateFriendRequest(ctx context.Context, userID, friendID int64) (*Friend, error)
+
+	// UpdateFriendStatus updates the status of a friendship.
+	UpdateFriendStatus(ctx context.Context, userID, friendID int64, status FriendStatus) error
+
+	// GetFriendship retrieves a friendship between two users (in either direction).
+	GetFriendship(ctx context.Context, userID, friendID int64) (*Friend, error)
+
+	// ListFriends lists friendships for a user, optionally filtered by status.
+	ListFriends(ctx context.Context, userID int64, status *FriendStatus) ([]*Friend, error)
+
+	// IsFriend checks if two users are friends (accepted status in either direction).
+	IsFriend(ctx context.Context, userID, friendID int64) (bool, error)
+
+	// DeleteFriendship removes a friendship record.
+	DeleteFriendship(ctx context.Context, userID, friendID int64) error
+}
+
+// CallStore handles call persistence.
+type CallStore interface {
+	// CreateCall creates a new call.
+	CreateCall(ctx context.Context, call *Call) error
+
+	// UpdateCall updates an existing call.
+	UpdateCall(ctx context.Context, call *Call) error
+
+	// GetCall retrieves a call by ID.
+	GetCall(ctx context.Context, id string) (*Call, error)
+
+	// ListActiveCalls lists active calls (ringing or active) for a user.
+	ListActiveCalls(ctx context.Context, userID int64) ([]*Call, error)
+
+	// AddParticipant adds a participant to a call.
+	AddParticipant(ctx context.Context, p *CallParticipant) error
+
+	// UpdateParticipant updates a participant record.
+	UpdateParticipant(ctx context.Context, p *CallParticipant) error
+
+	// GetParticipant retrieves a participant from a call.
+	GetParticipant(ctx context.Context, callID string, userID int64) (*CallParticipant, error)
+
+	// ListParticipants lists all participants in a call.
+	ListParticipants(ctx context.Context, callID string) ([]*CallParticipant, error)
+}
+
 // Store aggregates all storage interfaces.
 type Store interface {
 	UserStore
 	RoomStore
 	MessageStore
+	FriendStore
+	CallStore
 
 	// Close closes the underlying database connection.
 	Close() error

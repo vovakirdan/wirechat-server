@@ -8,8 +8,12 @@ import (
 
 	"github.com/rs/zerolog"
 	"github.com/vovakirdan/wirechat-server/internal/auth"
+	"github.com/vovakirdan/wirechat-server/internal/callengine"
+	"github.com/vovakirdan/wirechat-server/internal/callengine/livekit"
 	"github.com/vovakirdan/wirechat-server/internal/config"
 	"github.com/vovakirdan/wirechat-server/internal/core"
+	"github.com/vovakirdan/wirechat-server/internal/service/calls"
+	"github.com/vovakirdan/wirechat-server/internal/service/friends"
 	"github.com/vovakirdan/wirechat-server/internal/store"
 	"github.com/vovakirdan/wirechat-server/internal/store/sqlite"
 	transporthttp "github.com/vovakirdan/wirechat-server/internal/transport/http"
@@ -45,8 +49,27 @@ func New(cfg *config.Config, logger *zerolog.Logger) (*App, error) {
 	// Create auth service
 	authService := auth.NewService(st, jwtConfig)
 
+	// Create services
+	friendsService := friends.New(st)
+
+	// Create call engine (LiveKit) if enabled
+	var callEngine callengine.Engine
+	if cfg.LiveKit.Enabled {
+		if cfg.LiveKit.APIKey == "" || cfg.LiveKit.APISecret == "" {
+			return nil, fmt.Errorf("livekit is enabled but api_key or api_secret is not set")
+		}
+		callEngine = livekit.New(cfg.LiveKit.APIKey, cfg.LiveKit.APISecret, cfg.LiveKit.WSURL)
+		logger.Info().
+			Str("ws_url", cfg.LiveKit.WSURL).
+			Msg("LiveKit integration enabled")
+	} else {
+		logger.Info().Msg("LiveKit integration disabled")
+	}
+
+	callsService := calls.New(st, callEngine, friendsService)
+
 	hub := core.NewHub(st)
-	server := transporthttp.NewServer(hub, authService, st, cfg, logger)
+	server := transporthttp.NewServer(hub, authService, st, friendsService, callsService, cfg, logger)
 
 	return &App{
 		server:          server,

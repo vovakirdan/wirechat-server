@@ -9,11 +9,21 @@ import (
 	"github.com/vovakirdan/wirechat-server/internal/auth"
 	"github.com/vovakirdan/wirechat-server/internal/config"
 	"github.com/vovakirdan/wirechat-server/internal/core"
+	"github.com/vovakirdan/wirechat-server/internal/service/calls"
+	"github.com/vovakirdan/wirechat-server/internal/service/friends"
 	"github.com/vovakirdan/wirechat-server/internal/store"
 )
 
 // NewServer builds an HTTP server with REST API and WebSocket routes.
-func NewServer(hub core.Hub, authService *auth.Service, st store.Store, cfg *config.Config, logger *zerolog.Logger) *stdhttp.Server {
+func NewServer(
+	hub core.Hub,
+	authService *auth.Service,
+	st store.Store,
+	friendsSvc *friends.Service,
+	callsSvc *calls.Service,
+	cfg *config.Config,
+	logger *zerolog.Logger,
+) *stdhttp.Server {
 	// Set Gin mode based on log level
 	gin.SetMode(gin.ReleaseMode)
 
@@ -40,6 +50,29 @@ func NewServer(hub core.Hub, authService *auth.Service, st store.Store, cfg *con
 	api.POST("/rooms/:id/members", authMiddleware, roomHandlers.AddMember)
 	api.DELETE("/rooms/:id/members/:userId", authMiddleware, roomHandlers.RemoveMember)
 	api.GET("/rooms/:id/messages", authMiddleware, roomHandlers.GetMessages)
+
+	// Friends endpoints (require authentication)
+	friendsHandlers := NewFriendsHandlers(friendsSvc, st, logger)
+	friendsGroup := api.Group("/friends")
+	friendsGroup.Use(authMiddleware)
+	friendsGroup.POST("/requests", friendsHandlers.SendRequest)
+	friendsGroup.GET("", friendsHandlers.ListFriends)
+	friendsGroup.GET("/requests/incoming", friendsHandlers.ListPendingRequests)
+	friendsGroup.POST("/:userId/accept", friendsHandlers.AcceptRequest)
+	friendsGroup.DELETE("/:userId/reject", friendsHandlers.RejectRequest)
+	friendsGroup.POST("/:userId/block", friendsHandlers.BlockUser)
+	friendsGroup.DELETE("/:userId/unblock", friendsHandlers.UnblockUser)
+
+	// Calls endpoints (require authentication)
+	callsHandlers := NewCallsHandlers(callsSvc, logger)
+	callsGroup := api.Group("/calls")
+	callsGroup.Use(authMiddleware)
+	callsGroup.POST("/direct", callsHandlers.CreateDirectCall)
+	callsGroup.POST("/room", callsHandlers.CreateRoomCall)
+	callsGroup.GET("/active", callsHandlers.ListActiveCalls)
+	callsGroup.GET("/:id", callsHandlers.GetCall)
+	callsGroup.GET("/:id/join", callsHandlers.GetJoinInfo)
+	callsGroup.PUT("/:id/end", callsHandlers.EndCall)
 
 	// Main mux - combines Gin for API and direct handler for WebSocket
 	mux := stdhttp.NewServeMux()
