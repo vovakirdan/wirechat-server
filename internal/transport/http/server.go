@@ -32,9 +32,26 @@ func NewServer(
 	ginRouter.Use(gin.Recovery())
 	ginRouter.Use(LoggerMiddleware(logger))
 
+	// CORS middleware for web clients
+	ginRouter.Use(func(c *gin.Context) {
+		c.Header("Access-Control-Allow-Origin", "*")
+		c.Header("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
+		c.Header("Access-Control-Allow-Headers", "Content-Type, Authorization, X-Client-Type")
+
+		if c.Request.Method == "OPTIONS" {
+			c.AbortWithStatus(204)
+			return
+		}
+
+		c.Next()
+	})
+
 	// API endpoints
 	apiHandlers := NewAPIHandlers(authService, logger)
 	api := ginRouter.Group("/api")
+	api.GET("/ping", func(c *gin.Context) {
+		c.JSON(200, gin.H{"message": "pong"})
+	})
 	api.POST("/register", apiHandlers.Register)
 	api.POST("/login", apiHandlers.Login)
 	api.POST("/guest", apiHandlers.GuestLogin)
