@@ -11,6 +11,8 @@ endif
 
 GOLANGCI_LINT := $(GOBIN)/golangci-lint
 GOLANGCI_LINT_VERSION := v1.62.2
+GOOSE := $(GOBIN)/goose
+GOOSE_VERSION := v3.26.0
 
 all: build
 
@@ -36,6 +38,10 @@ $(GOLANGCI_LINT):
 	@echo ">> Installing golangci-lint $(GOLANGCI_LINT_VERSION)"
 	$(GO) install github.com/golangci/golangci-lint/cmd/golangci-lint@$(GOLANGCI_LINT_VERSION)
 
+$(GOOSE):
+	@echo ">> Installing goose $(GOOSE_VERSION)"
+	$(GO) install github.com/pressly/goose/v3/cmd/goose@$(GOOSE_VERSION)
+
 lint: $(GOLANGCI_LINT)
 	@echo ">> Running linters"
 	$(GOLANGCI_LINT) run --config .golangci.yaml
@@ -48,19 +54,19 @@ docker:
 # Database migrations (using goose)
 migrate: migrate-up
 
-migrate-up:
+migrate-up: $(GOOSE)
 	@echo ">> Running migrations up"
 	@mkdir -p $(dir $(DB_PATH))
-	@goose -dir $(MIGRATIONS_DIR) sqlite3 $(DB_PATH) up
+	@$(GOOSE) -dir $(MIGRATIONS_DIR) sqlite3 $(DB_PATH) up
 
-migrate-down:
+migrate-down: $(GOOSE)
 	@echo ">> Rolling back last migration"
-	@goose -dir $(MIGRATIONS_DIR) sqlite3 $(DB_PATH) down
+	@$(GOOSE) -dir $(MIGRATIONS_DIR) sqlite3 $(DB_PATH) down
 
-migrate-status:
+migrate-status: $(GOOSE)
 	@echo ">> Checking migration status"
-	@goose -dir $(MIGRATIONS_DIR) sqlite3 $(DB_PATH) status
+	@$(GOOSE) -dir $(MIGRATIONS_DIR) sqlite3 $(DB_PATH) status
 
-migrate-create:
+migrate-create: $(GOOSE)
 	@echo ">> Creating new migration (usage: make migrate-create NAME=migration_name)"
-	@goose -dir $(MIGRATIONS_DIR) create $(NAME) sql
+	@$(GOOSE) -dir $(MIGRATIONS_DIR) create $(NAME) sql
