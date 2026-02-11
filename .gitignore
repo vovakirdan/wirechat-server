@@ -46,3 +46,5 @@ data/
 infra/livekit/testclient/token-server/token-server
 infra/livekit/testclient/web/index.html
 infra/livekit/testclient/web/livekit-client.umd.min.js
+!infra/livekit/docker-compose.yml
+!infra/livekit/livekit.yaml

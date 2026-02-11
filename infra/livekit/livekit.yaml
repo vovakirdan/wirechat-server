@@ -1,0 +1,14 @@
+# LiveKit Server Configuration (dev)
+# API keys are set via LIVEKIT_KEYS environment variable
+
+port: 7880
+
+rtc:
+  port_range_start: 7882
+  port_range_end: 7892
+  use_external_ip: false
+  tcp_port: 7881
+
+logging:
+  level: debug
+  json: false
