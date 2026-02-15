@@ -80,6 +80,12 @@ func NewServer(
 	friendsGroup.POST("/:userId/block", friendsHandlers.BlockUser)
 	friendsGroup.DELETE("/:userId/unblock", friendsHandlers.UnblockUser)
 
+	// User endpoints (require authentication)
+	userHandlers := NewUserHandlers(st, logger)
+	userGroup := api.Group("/users")
+	userGroup.Use(authMiddleware)
+	userGroup.GET("/search", userHandlers.SearchUsers)
+
 	// Calls endpoints (require authentication)
 	callsHandlers := NewCallsHandlers(callsSvc, logger)
 	callsGroup := api.Group("/calls")

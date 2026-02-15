@@ -58,7 +58,14 @@ func (h *APIHandlers) Register(c *gin.Context) {
 
 	token, err := h.authService.Register(c.Request.Context(), req.Username, req.Password)
 	if err != nil {
-		if errors.Is(err, auth.ErrUserExists) {
+		switch {
+		case errors.Is(err, auth.ErrInvalidUsername):
+			c.JSON(http.StatusBadRequest, ErrorResponse{Error: "username must be 3-32 characters"})
+			return
+		case errors.Is(err, auth.ErrInvalidPassword):
+			c.JSON(http.StatusBadRequest, ErrorResponse{Error: "password must be at least 6 characters"})
+			return
+		case errors.Is(err, auth.ErrUserExists):
 			c.JSON(http.StatusConflict, ErrorResponse{Error: "user already exists"})
 			return
 		}

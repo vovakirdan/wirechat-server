@@ -190,6 +190,43 @@ func (s *SQLiteStore) GetUserBySessionID(ctx context.Context, sessionID string) 
 	return &user, nil
 }
 
+// SearchUsers searches for users by username.
+func (s *SQLiteStore) SearchUsers(ctx context.Context, queryStr string) ([]*store.User, error) {
+	query := `
+		SELECT id, username, password_hash, is_guest, COALESCE(session_id, ''), created_at
+		FROM users
+		WHERE username LIKE ? AND is_guest = 0
+		ORDER BY username ASC
+		LIMIT 20
+	`
+	// Add wildcards to query
+	searchQuery := "%" + queryStr + "%"
+
+	rows, err := s.db.QueryContext(ctx, query, searchQuery)
+	if err != nil {
+		return nil, fmt.Errorf("query users: %w", err)
+	}
+	defer rows.Close()
+
+	var users []*store.User
+	for rows.Next() {
+		var user store.User
+		if err := rows.Scan(
+			&user.ID,
+			&user.Username,
+			&user.PasswordHash,
+			&user.IsGuest,
+			&user.SessionID,
+			&user.CreatedAt,
+		); err != nil {
+			return nil, fmt.Errorf("scan user: %w", err)
+		}
+		users = append(users, &user)
+	}
+
+	return users, rows.Err()
+}
+
 // ==== RoomStore implementation ====
 
 // CreateRoom creates a new room.

@@ -1123,6 +1123,36 @@ Remove a user from a private room.
 
 ---
 
+### User Discovery
+
+#### `GET /api/users/search` - Search Users
+
+Search for users by username.
+
+**Query Parameters**:
+- `q` (string, required): Search query (minimum 3 characters)
+
+**Response** (200 OK):
+```json
+[
+  {
+    "id": 123,
+    "username": "alice",
+    "name": "alice"
+  },
+  {
+    "id": 456,
+    "username": "alicia",
+    "name": "alicia"
+  }
+]
+```
+
+**Errors**:
+- `400 Bad Request`: Query too short
+
+---
+
 ### Message History
 
 #### `GET /api/rooms/:id/messages` - Get Message History

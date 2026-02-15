@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"strings"
 
 	"github.com/vovakirdan/wirechat-server/internal/store"
 )
@@ -15,6 +16,10 @@ var (
 	ErrInvalidCredentials = errors.New("invalid credentials")
 	// ErrUserExists is returned when trying to register with existing username.
 	ErrUserExists = errors.New("user already exists")
+	// ErrInvalidUsername is returned when username doesn't meet constraints.
+	ErrInvalidUsername = errors.New("invalid username")
+	// ErrInvalidPassword is returned when password doesn't meet constraints.
+	ErrInvalidPassword = errors.New("invalid password")
 )
 
 // Service provides authentication operations.
@@ -33,6 +38,14 @@ func NewService(userStore store.UserStore, jwtConfig *JWTConfig) *Service {
 
 // Register creates a new user with hashed password and returns a JWT token.
 func (s *Service) Register(ctx context.Context, username, password string) (string, error) {
+	username = strings.TrimSpace(username)
+	if len(username) < 3 || len(username) > 32 {
+		return "", ErrInvalidUsername
+	}
+	if len(password) < 6 {
+		return "", ErrInvalidPassword
+	}
+
 	// Check if user already exists
 	existing, err := s.store.GetUserByUsername(ctx, username)
 	if err == nil && existing != nil {

@@ -149,6 +149,9 @@ type UserStore interface {
 
 	// UpdateUserCallSettings updates user's call privacy settings.
 	UpdateUserCallSettings(ctx context.Context, userID int64, setting AllowCallsFrom) error
+
+	// SearchUsers searches for users by username.
+	SearchUsers(ctx context.Context, query string) ([]*User, error)
 }
 
 // RoomStore handles room persistence.
